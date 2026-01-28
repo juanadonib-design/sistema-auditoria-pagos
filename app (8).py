@@ -33,7 +33,7 @@ def guardar_registro(datos):
     ))
     conn.commit()
 
-# ================= EXTRACCIÓN DE DATOS =================
+# ================= EXTRACCIÓN =================
 def extraer_datos(texto):
     institucion = re.search(r'INSTITUTO|MINISTERIO|DIRECCIÓN|AYUNTAMIENTO|UNIVERSIDAD.*', texto, re.IGNORECASE)
     estructura = re.search(r'\b\d{12}\b', texto)
@@ -47,7 +47,7 @@ def extraer_datos(texto):
         "Importe": importe.group(0) if importe else "No encontrado"
     }
 
-# ================= ENTRADA DE TEXTO =================
+# ================= ENTRADA =================
 texto = st.text_area("📥 Pegue el texto del documento aquí")
 
 if st.button("🔍 Analizar texto"):
@@ -67,7 +67,7 @@ if not df_historial.empty:
     with open("historial_auditoria.xlsx", "rb") as file:
         st.download_button("⬇️ Descargar Historial Excel", file, "historial_auditoria.xlsx")
 
-# ================= FORMULARIO TABLA OPTIMIZADO =================
+# ================= FORMULARIO OPTIMIZADO =================
 st.markdown("---")
 st.header("📋 Formulario de Verificación — Bienes y Servicios")
 
@@ -85,15 +85,13 @@ columnas_formulario = [
     "Contrato",
     "Título\nde\nPropiedad",
     "Determinación",
-    "Estado Jurídico\ndel Inmueble",
+    "Estado\nJurídico\ndel Inmueble",
     "Tasación",
-    "Aprobación Ministerio\nde la Presidencia",
+    "Aprobación\nMinisterio\nde la Presidencia",
     "Viaje\nPresidencial"
 ]
 
 df_formulario = pd.DataFrame([{col: "√" for col in columnas_formulario}])
-
-st.write("Marque √ si el documento está presente o N/A si no aplica:")
 
 tabla_editable = st.data_editor(
     df_formulario,
@@ -115,7 +113,7 @@ if faltantes:
     for f in faltantes:
         st.write("•", f.replace("\n", " "))
 
-# ================= GUARDAR FORMULARIO =================
+# ================= GUARDAR =================
 if st.button("💾 Guardar Formulario"):
     df_guardar = tabla_editable.copy()
     df_guardar["Expediente Completo"] = expediente_completo
@@ -131,7 +129,7 @@ if st.button("💾 Guardar Formulario"):
     df_final.to_excel(archivo, index=False)
     st.success("Formulario guardado en Excel")
 
-# ================= DESCARGAR FORMULARIOS =================
+# ================= DESCARGAR =================
 try:
     with open("formulario_bienes_servicios.xlsx", "rb") as f:
         st.download_button("⬇️ Descargar Formularios Excel", f, "formulario_bienes_servicios.xlsx")
