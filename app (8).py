@@ -4,7 +4,6 @@ import re
 import sqlite3
 
 st.set_page_config(page_title="Sistema Auditoría de Pagos", layout="wide")
-
 st.title("🧾 Sistema de Apoyo a la Auditoría de Pagos")
 
 # ================= BASE DE DATOS =================
@@ -53,8 +52,7 @@ texto = st.text_area("📥 Pegue el texto del documento aquí")
 
 if st.button("🔍 Analizar texto"):
     registro = extraer_datos(texto)
-    df_preview = pd.DataFrame([registro])
-    st.dataframe(df_preview)
+    st.dataframe(pd.DataFrame([registro]))
     guardar_registro(registro)
     st.success("Registro guardado")
 
@@ -69,46 +67,53 @@ if not df_historial.empty:
     with open("historial_auditoria.xlsx", "rb") as file:
         st.download_button("⬇️ Descargar Historial Excel", file, "historial_auditoria.xlsx")
 
-# ================= FORMULARIO TABLA =================
+# ================= FORMULARIO TABLA OPTIMIZADO =================
 st.markdown("---")
 st.header("📋 Formulario de Verificación — Bienes y Servicios")
 
 columnas_formulario = [
-    "Certificación Cuota Comprometer",
-    "Certificación Apropiación Presupuestaria",
-    "Oficio de Autorización",
+    "Certificación\nCuota\nComprometer",
+    "Certificación\nApropiación\nPresupuestaria",
+    "Oficio\nde\nAutorización",
     "Factura",
-    "Validación Firma Digital",
+    "Validación\nFirma\nDigital",
     "Recepción",
     "RPE",
     "DGI",
     "TSS",
-    "Orden de Compra",
+    "Orden\nde\nCompra",
     "Contrato",
-    "Título de Propiedad",
+    "Título\nde\nPropiedad",
     "Determinación",
-    "Estado Jurídico del Inmueble",
+    "Estado Jurídico\ndel Inmueble",
     "Tasación",
-    "Aprobación Ministerio de la Presidencia",
-    "Viaje Presidencial"
+    "Aprobación Ministerio\nde la Presidencia",
+    "Viaje\nPresidencial"
 ]
 
-df_formulario = pd.DataFrame([{col: "Sí" for col in columnas_formulario}])
+df_formulario = pd.DataFrame([{col: "√" for col in columnas_formulario}])
 
-tabla_editable = st.data_editor(df_formulario, use_container_width=True)
+st.write("Marque √ si el documento está presente o N/A si no aplica:")
 
-# ================= VALIDACIÓN AUTOMÁTICA =================
+tabla_editable = st.data_editor(
+    df_formulario,
+    column_config={col: st.column_config.SelectboxColumn(options=["√", "N/A"]) for col in columnas_formulario},
+    use_container_width=True,
+    num_rows="fixed"
+)
+
+# ================= VALIDACIÓN =================
 fila = tabla_editable.iloc[0]
-faltantes = [col for col in columnas_formulario if fila[col] == "No"]
+faltantes = [col for col in columnas_formulario if fila[col] == "N/A"]
 
 expediente_completo = "Sí" if len(faltantes) == 0 else "No"
 
 st.write(f"### Expediente Completo: **{expediente_completo}**")
 
 if faltantes:
-    st.warning("⚠️ Documentos faltantes:")
+    st.warning("⚠️ Elementos marcados como N/A:")
     for f in faltantes:
-        st.write("•", f)
+        st.write("•", f.replace("\n", " "))
 
 # ================= GUARDAR FORMULARIO =================
 if st.button("💾 Guardar Formulario"):
