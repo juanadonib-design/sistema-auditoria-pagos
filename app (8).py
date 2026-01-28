@@ -71,15 +71,16 @@ if not df_historial.empty:
 st.markdown("---")
 st.header("📋 Formulario de Verificación — Bienes y Servicios")
 
+# Lista con los nombres de columnas usando \n para el formato vertical
 columnas_formulario = [
-    "Certificación\nCuota\nComprometer",
-    "Certificación\nApropiación\nPresupuestaria",
+    "Certificación\nde Cuota\na Comprometer",
+    "Certificado\nde\nApropiacion\nPresupuestario", # El cambio solicitado
     "Oficio\nde\nAutorización",
     "Factura",
     "Validación\nFirma\nDigital",
     "Recepción",
     "RPE",
-    "DGI",
+    "DGII",
     "TSS",
     "Orden\nde\nCompra",
     "Contrato",
@@ -91,13 +92,16 @@ columnas_formulario = [
     "Viaje\nPresidencial"
 ]
 
+# Crear el DataFrame inicial
 df_formulario = pd.DataFrame([{col: "√" for col in columnas_formulario}])
 
+# Mostrar la tabla editable
 tabla_editable = st.data_editor(
     df_formulario,
     column_config={col: st.column_config.SelectboxColumn(options=["√", "N/A"]) for col in columnas_formulario},
     use_container_width=True,
-    num_rows="fixed"
+    num_rows="fixed",
+    hide_index=True # Ocultamos el índice para que se vea más limpio
 )
 
 # ================= VALIDACIÓN =================
@@ -111,11 +115,15 @@ st.write(f"### Expediente Completo: **{expediente_completo}**")
 if faltantes:
     st.warning("⚠️ Elementos marcados como N/A:")
     for f in faltantes:
+        # Reemplazamos los saltos de línea por espacios para que la lista de advertencia se lea bien
         st.write("•", f.replace("\n", " "))
 
-# ================= GUARDAR =================
+# ================= GUARDAR FORMULARIO =================
 if st.button("💾 Guardar Formulario"):
+    # Limpiamos los saltos de línea de los nombres de las columnas antes de guardar en Excel
+    # para evitar problemas de compatibilidad en el archivo final
     df_guardar = tabla_editable.copy()
+    df_guardar.columns = [c.replace("\n", " ") for c in df_guardar.columns]
     df_guardar["Expediente Completo"] = expediente_completo
 
     archivo = "formulario_bienes_servicios.xlsx"
