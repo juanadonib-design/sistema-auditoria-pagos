@@ -67,54 +67,58 @@ if not df_historial.empty:
     with open("historial_auditoria.xlsx", "rb") as file:
         st.download_button("⬇️ Descargar Historial Excel", file, "historial_auditoria.xlsx")
 
-# ================= FORMULARIO OPTIMIZADO (CAMBIO SOLICITADO) =================
+# ================= FORMULARIO OPTIMIZADO =================
 st.markdown("---")
 st.header("📋 Formulario de Verificación — Bienes y Servicios")
 
-# Nombres de columnas limpios (Excel Style)
-columnas_formulario = [
-    "Certificación de Cuota a Comprometer",
-    "Certificado de Apropiacion Presupuestario",
-    "Oficio de Autorización",
-    "Factura",
-    "Validación Firma Digital",
-    "Recepción",
-    "RPE",
-    "DGII",
-    "TSS",
-    "Orden de Compra",
-    "Contrato",
-    "Título de Propiedad",
-    "Determinación",
-    "Estado Jurídico del Inmueble",
-    "Tasación",
-    "Aprobación Ministerio de la Presidencia",
-    "Viaje Presidencial"
-]
-
-df_formulario = pd.DataFrame([{col: "√" for col in columnas_formulario}])
-
-# Forzamos ancho de 85px para que el texto haga "Wrap" verticalmente
-config_columnas = {
-    col: st.column_config.SelectboxColumn(
-        label=col, 
-        options=["√", "N/A"],
-        width=85,  
-        required=True
-    ) for col in columnas_formulario
+# Diccionario de mapeo: Nombre Original vs Nombre Corto para la Columna
+columnas_map = {
+    "Certificación de Cuota a Comprometer": "Cert. Cuota",
+    "Certificado de Apropiacion Presupuestario": "Cert. Presup.",
+    "Oficio de Autorización": "Oficio Aut.",
+    "Factura": "Factura",
+    "Validación Firma Digital": "Firma Dig.",
+    "Recepción": "Recepción",
+    "RPE": "RPE",
+    "DGII": "DGII",
+    "TSS": "TSS",
+    "Orden de Compra": "Ord. Compra",
+    "Contrato": "Contrato",
+    "Título de Propiedad": "Título Prop.",
+    "Determinación": "Determ.",
+    "Estado Jurídico del Inmueble": "Est. Juríd.",
+    "Tasación": "Tasación",
+    "Aprobación Ministerio de la Presidencia": "Aprob. Min.",
+    "Viaje Presidencial": "Viaje Pres."
 }
 
+# Creamos el DataFrame usando las llaves largas (nombres reales)
+columnas_reales = list(columnas_map.keys())
+df_formulario = pd.DataFrame([{col: "√" for col in columnas_reales}])
+
+# Configuración de columnas para forzar el ajuste visual
+config_columnas = {
+    original: st.column_config.SelectboxColumn(
+        label=corto,           # Nombre que se muestra (corto)
+        help=original,         # Nombre completo al pasar el mouse
+        options=["√", "N/A"],
+        width=85,              # Ancho reducido
+        required=True
+    ) for original, corto in columnas_map.items()
+}
+
+# Editor de datos con ancho controlado
 tabla_editable = st.data_editor(
     df_formulario,
     column_config=config_columnas,
-    use_container_width=False, # Importante: False para que respete el ancho fijo de 85px
+    use_container_width=False, 
     num_rows="fixed",
     hide_index=True
 )
 
 # ================= VALIDACIÓN =================
 fila = tabla_editable.iloc[0]
-faltantes = [col for col in columnas_formulario if fila[col] == "N/A"]
+faltantes = [col for col in columnas_reales if fila[col] == "N/A"]
 expediente_completo = "Sí" if len(faltantes) == 0 else "No"
 
 st.write(f"### Expediente Completo: **{expediente_completo}**")
@@ -122,7 +126,7 @@ st.write(f"### Expediente Completo: **{expediente_completo}**")
 if faltantes:
     st.warning("⚠️ Elementos marcados como N/A:")
     for f in faltantes:
-        st.write("•", f)
+        st.write(f"• {f}")
 
 # ================= GUARDAR Y DESCARGAR =================
 if st.button("💾 Guardar Formulario"):
