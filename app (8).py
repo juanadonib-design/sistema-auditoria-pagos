@@ -80,3 +80,20 @@ st.write(f"📊 Total de registros almacenados: {total}")
 st.subheader("📁 Historial de registros almacenados")
 df_historial = pd.read_sql_query("SELECT * FROM registros ORDER BY id DESC", conn)
 st.dataframe(df_historial)
+
+# ================= EXPORTAR A EXCEL =================
+st.subheader("⬇️ Exportar historial a Excel")
+
+if not df_historial.empty:
+    archivo_excel = "historial_auditoria.xlsx"
+    df_historial.to_excel(archivo_excel, index=False)
+
+    with open(archivo_excel, "rb") as file:
+        st.download_button(
+            label="Descargar archivo Excel",
+            data=file,
+            file_name="historial_auditoria.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+else:
+    st.info("No hay registros para exportar")
