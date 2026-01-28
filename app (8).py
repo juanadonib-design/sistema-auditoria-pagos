@@ -34,13 +34,6 @@ def extraer_datos(texto):
 
     return datos
 
-
-# 🧪 Texto de prueba del auditor
-texto = """
-Se autoriza pago a la Institución INABIE con estructura programática 010203040506,
-Libramiento No. 4587 por un importe de RD$ 125,000.00
-"""
-
 # Extraer datos
 registro = extraer_datos(texto)
 
@@ -49,3 +42,4 @@ df = pd.DataFrame([registro])
 
 print("\n===== VISTA PREVIA DE DATOS =====")
 print(df)
+
