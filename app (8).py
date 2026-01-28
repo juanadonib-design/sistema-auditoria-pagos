@@ -53,92 +53,82 @@ texto = st.text_area("📥 Pegue el texto del documento aquí")
 
 if st.button("🔍 Analizar texto"):
     registro = extraer_datos(texto)
-    st.write("### Vista previa")
     df_preview = pd.DataFrame([registro])
     st.dataframe(df_preview)
-
     guardar_registro(registro)
-    st.success("Registro guardado automáticamente")
+    st.success("Registro guardado")
 
 # ================= HISTORIAL =================
 st.markdown("---")
 st.subheader("📊 Historial de Registros")
-
 df_historial = pd.read_sql_query("SELECT * FROM registros", conn)
 st.dataframe(df_historial)
 
-st.write(f"Total registros almacenados: {len(df_historial)} / 15,000")
-
-# ================= EXPORTAR HISTORIAL =================
 if not df_historial.empty:
-    archivo_excel = "historial_auditoria.xlsx"
-    df_historial.to_excel(archivo_excel, index=False)
-    with open(archivo_excel, "rb") as file:
-        st.download_button(
-            label="⬇️ Descargar Historial en Excel",
-            data=file,
-            file_name="historial_auditoria.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
+    df_historial.to_excel("historial_auditoria.xlsx", index=False)
+    with open("historial_auditoria.xlsx", "rb") as file:
+        st.download_button("⬇️ Descargar Historial Excel", file, "historial_auditoria.xlsx")
 
-# ================= FORMULARIO BIENES Y SERVICIOS =================
+# ================= FORMULARIO TABLA =================
 st.markdown("---")
 st.header("📋 Formulario de Verificación — Bienes y Servicios")
 
-def opcion(label):
-    return st.selectbox(label, ["Sí", "No"], key="form_" + label)
+columnas_formulario = [
+    "Certificación Cuota Comprometer",
+    "Certificación Apropiación Presupuestaria",
+    "Oficio de Autorización",
+    "Factura",
+    "Validación Firma Digital",
+    "Recepción",
+    "RPE",
+    "DGI",
+    "TSS",
+    "Orden de Compra",
+    "Contrato",
+    "Título de Propiedad",
+    "Determinación",
+    "Estado Jurídico del Inmueble",
+    "Tasación",
+    "Aprobación Ministerio de la Presidencia",
+    "Viaje Presidencial"
+]
 
-datos_formulario = {
-    "Certificación Cuota Comprometer": opcion("Certificación Cuota Comprometer"),
-    "Certificación Apropiación Presupuestaria": opcion("Certificación Apropiación Presupuestaria"),
-    "Oficio de Autorización": opcion("Oficio de Autorización"),
-    "Factura": opcion("Factura"),
-    "Validación Firma Digital": opcion("Validación Firma Digital"),
-    "Recepción": opcion("Recepción"),
-    "RPE": opcion("RPE"),
-    "DGI": opcion("DGI"),
-    "TSS": opcion("TSS"),
-    "Orden de Compra": opcion("Orden de Compra"),
-    "Contrato": opcion("Contrato"),
-    "Título de Propiedad": opcion("Título de Propiedad"),
-    "Determinación": opcion("Determinación"),
-    "Estado Jurídico del Inmueble": opcion("Estado Jurídico del Inmueble"),
-    "Tasación": opcion("Tasación"),
-    "Aprobación Ministerio de la Presidencia": opcion("Aprobación Ministerio de la Presidencia"),
-    "Viaje Presidencial": opcion("Viaje Presidencial"),
-}
+df_formulario = pd.DataFrame([{col: "Sí" for col in columnas_formulario}])
 
-# ================= GUARDAR FORMULARIO =================
-if st.button("💾 Guardar Formulario"):
-    df_form = pd.DataFrame([datos_formulario])
-    archivo = "formulario_bienes_servicios.xlsx"
+tabla_editable = st.data_editor(df_formulario, use_container_width=True)
 
-    try:
-        df_existente = pd.read_excel(archivo)
-        df_final = pd.concat([df_existente, df_form], ignore_index=True)
-    except:
-        df_final = df_form
+# ================= VALIDACIÓN AUTOMÁTICA =================
+fila = tabla_editable.iloc[0]
+faltantes = [col for col in columnas_formulario if fila[col] == "No"]
 
-    df_final.to_excel(archivo, index=False)
-    st.success("Formulario guardado en Excel")
+expediente_completo = "Sí" if len(faltantes) == 0 else "No"
 
-# ================= VALIDACIÓN =================
-faltantes = [k for k, v in datos_formulario.items() if v == "No"]
+st.write(f"### Expediente Completo: **{expediente_completo}**")
 
 if faltantes:
     st.warning("⚠️ Documentos faltantes:")
     for f in faltantes:
         st.write("•", f)
-else:
-    st.success("✅ Expediente completo")
+
+# ================= GUARDAR FORMULARIO =================
+if st.button("💾 Guardar Formulario"):
+    df_guardar = tabla_editable.copy()
+    df_guardar["Expediente Completo"] = expediente_completo
+
+    archivo = "formulario_bienes_servicios.xlsx"
+
+    try:
+        df_existente = pd.read_excel(archivo)
+        df_final = pd.concat([df_existente, df_guardar], ignore_index=True)
+    except:
+        df_final = df_guardar
+
+    df_final.to_excel(archivo, index=False)
+    st.success("Formulario guardado en Excel")
 
 # ================= DESCARGAR FORMULARIOS =================
 try:
     with open("formulario_bienes_servicios.xlsx", "rb") as f:
-        st.download_button(
-            "⬇️ Descargar Formularios Excel",
-            f,
-            file_name="formulario_bienes_servicios.xlsx"
-        )
+        st.download_button("⬇️ Descargar Formularios Excel", f, "formulario_bienes_servicios.xlsx")
 except:
     st.info("Aún no hay formularios guardados")
