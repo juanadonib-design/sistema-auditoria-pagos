@@ -9,8 +9,11 @@ st.title("Sistema de apoyo para auditoría de pagos")
 conn = sqlite3.connect("auditoria_pagos.db", check_same_thread=False)
 cursor = conn.cursor()
 
+# 🔥 RECREAR TABLA (corrige errores anteriores)
+cursor.execute("DROP TABLE IF EXISTS registros")
+
 cursor.execute("""
-CREATE TABLE IF NOT EXISTS registros (
+CREATE TABLE registros (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     institucion TEXT,
     estructura_programatica TEXT,
@@ -68,7 +71,7 @@ if texto:
     st.subheader("Vista previa de datos")
     st.dataframe(df)
 
-    # Si hay datos válidos, guardar automático
+    # Guardado automático si hay libramiento
     if registro["Numero de libramiento"]:
         guardar_registro(registro)
 
