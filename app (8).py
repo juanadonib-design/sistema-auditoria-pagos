@@ -71,10 +71,10 @@ if not df_historial.empty:
 st.markdown("---")
 st.header("📋 Formulario de Verificación — Bienes y Servicios")
 
-# Lista con los nombres de columnas usando \n para el formato vertical
+# Lista con saltos de línea para forzar el formato vertical
 columnas_formulario = [
     "Certificación\nde Cuota\na Comprometer",
-    "Certificado\nde\nApropiacion\nPresupuestario", # El cambio solicitado
+    "Certificado\nde\nApropiacion\nPresupuestario",
     "Oficio\nde\nAutorización",
     "Factura",
     "Validación\nFirma\nDigital",
@@ -92,22 +92,28 @@ columnas_formulario = [
     "Viaje\nPresidencial"
 ]
 
-# Crear el DataFrame inicial
 df_formulario = pd.DataFrame([{col: "√" for col in columnas_formulario}])
 
-# Mostrar la tabla editable
+# CONFIGURACIÓN DE COLUMNAS: Aquí se fuerza el ancho pequeño
+config_columnas = {
+    col: st.column_config.SelectboxColumn(
+        label=col, 
+        options=["√", "N/A"],
+        width="small" # Esto obliga al texto a usar los saltos de línea \n
+    ) for col in columnas_formulario
+}
+
 tabla_editable = st.data_editor(
     df_formulario,
-    column_config={col: st.column_config.SelectboxColumn(options=["√", "N/A"]) for col in columnas_formulario},
+    column_config=config_columnas,
     use_container_width=True,
     num_rows="fixed",
-    hide_index=True # Ocultamos el índice para que se vea más limpio
+    hide_index=True
 )
 
 # ================= VALIDACIÓN =================
 fila = tabla_editable.iloc[0]
 faltantes = [col for col in columnas_formulario if fila[col] == "N/A"]
-
 expediente_completo = "Sí" if len(faltantes) == 0 else "No"
 
 st.write(f"### Expediente Completo: **{expediente_completo}**")
@@ -115,19 +121,16 @@ st.write(f"### Expediente Completo: **{expediente_completo}**")
 if faltantes:
     st.warning("⚠️ Elementos marcados como N/A:")
     for f in faltantes:
-        # Reemplazamos los saltos de línea por espacios para que la lista de advertencia se lea bien
         st.write("•", f.replace("\n", " "))
 
-# ================= GUARDAR FORMULARIO =================
+# ================= GUARDAR Y DESCARGAR =================
 if st.button("💾 Guardar Formulario"):
-    # Limpiamos los saltos de línea de los nombres de las columnas antes de guardar en Excel
-    # para evitar problemas de compatibilidad en el archivo final
     df_guardar = tabla_editable.copy()
+    # Limpiamos los nombres para el Excel (quitamos los saltos de línea)
     df_guardar.columns = [c.replace("\n", " ") for c in df_guardar.columns]
     df_guardar["Expediente Completo"] = expediente_completo
 
     archivo = "formulario_bienes_servicios.xlsx"
-
     try:
         df_existente = pd.read_excel(archivo)
         df_final = pd.concat([df_existente, df_guardar], ignore_index=True)
@@ -137,7 +140,6 @@ if st.button("💾 Guardar Formulario"):
     df_final.to_excel(archivo, index=False)
     st.success("Formulario guardado en Excel")
 
-# ================= DESCARGAR =================
 try:
     with open("formulario_bienes_servicios.xlsx", "rb") as f:
         st.download_button("⬇️ Descargar Formularios Excel", f, "formulario_bienes_servicios.xlsx")
