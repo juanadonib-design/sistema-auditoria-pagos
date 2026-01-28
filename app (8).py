@@ -36,23 +36,24 @@ def guardar_registro(datos):
 # ================= EXTRACCIÓN =================
 def extraer_datos(texto):
 
-    # 🔹 INSTITUCIÓN (más amplio y preciso)
+    # 🔹 INSTITUCIÓN (lo que esté después de la palabra "Institución")
     institucion = re.search(
-        r'(?im)^(.*?(ministerio|dirección|instituto|oficina|ayuntamiento|universidad|hospital|contraloría|tesorería|procuraduría|superintendencia|inabie).*)$',
-        texto
+        r'Institución\s*[:\-]?\s*(.+)',
+        texto,
+        re.IGNORECASE
     )
 
-    # 🔹 ESTRUCTURA PROGRAMÁTICA (12 números exactos)
+    # 🔹 ESTRUCTURA PROGRAMÁTICA (12 números)
     estructura = re.search(r'\b\d{12}\b', texto)
 
-    # 🔹 LIBRAMIENTO (solo si está etiquetado)
+    # 🔹 LIBRAMIENTO (identificado)
     libramiento = re.search(
         r'(libramiento|no\.?|núm\.?|numero)\s*[:\-]?\s*(\d{1,5})',
         texto,
         re.IGNORECASE
     )
 
-    # 🔹 IMPORTE EN PESOS
+    # 🔹 IMPORTE
     importe = re.search(r'(RD\$|\$)\s?[\d,]+\.\d{2}', texto)
 
     return {
@@ -150,4 +151,5 @@ try:
         st.download_button("⬇️ Descargar Formularios Excel", f, "formulario_bienes_servicios.xlsx")
 except:
     st.info("Aún no hay formularios guardados")
+
 
