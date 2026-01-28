@@ -3,23 +3,34 @@ import pandas as pd
 import re
 import sqlite3
 
+# Configuración de página
 st.set_page_config(page_title="Sistema Auditoría de Pagos", layout="wide")
 
-# === TRUCO DE CSS PARA AJUSTAR TEXTO EN ENCABEZADOS ===
+# ================= CSS PARA AJUSTE DE TEXTO EN ENCABEZADOS =================
 st.markdown("""
     <style>
-        /* Forzar que el texto de los encabezados de la tabla se ajuste (Wrap) */
-        div[data-testid="stDataEditor"] div[class^="st-"] th {
+        /* Forzar que el contenedor del encabezado permita varias líneas */
+        [data-testid="stDataEditor"] th [data-testid="stHeader"] {
             white-space: normal !important;
-            word-wrap: break-word !important;
+            word-break: break-word !important;
+            overflow-wrap: break-word !important;
             line-height: 1.2 !important;
             height: auto !important;
-            min-height: 80px !important;
-            vertical-align: middle !important;
+            display: flex !important;
+            align-items: center !important;
+            text-align: center !important;
+            padding: 2px !important;
+            font-size: 0.85rem !important;
         }
-        /* Ajuste específico para el contenedor del data_editor */
-        [data-testid="stDataEditor"] [class^="st-"] {
-            line-height: 1.2;
+        
+        /* Aumentar la altura de la fila de encabezados */
+        [data-testid="stDataEditor"] thead tr {
+            height: 110px !important;
+        }
+
+        /* Centrar visualmente el contenido de las celdas de edición */
+        [data-testid="stDataEditor"] div {
+            text-align: center;
         }
     </style>
 """, unsafe_allow_html=True)
@@ -41,19 +52,25 @@ CREATE TABLE IF NOT EXISTS registros (
 """)
 conn.commit()
 
-# ... (Tus funciones guardar_registro y extraer_datos se mantienen igual) ...
 def guardar_registro(datos):
     cursor.execute("""
         INSERT INTO registros (institucion, estructura_programatica, numero_libramiento, importe)
         VALUES (?, ?, ?, ?)
-    """, (datos["Institucion"], datos["Estructura"], datos["Libramiento"], datos["Importe"]))
+    """, (
+        datos["Institucion"],
+        datos["Estructura"],
+        datos["Libramiento"],
+        datos["Importe"]
+    ))
     conn.commit()
 
+# ================= EXTRACCIÓN =================
 def extraer_datos(texto):
     institucion = re.search(r'INSTITUTO|MINISTERIO|DIRECCIÓN|AYUNTAMIENTO|UNIVERSIDAD.*', texto, re.IGNORECASE)
     estructura = re.search(r'\b\d{12}\b', texto)
     libramiento = re.search(r'\b\d{1,5}\b', texto)
     importe = re.search(r'RD\$?\s?[\d,]+\.\d{2}', texto)
+
     return {
         "Institucion": institucion.group(0) if institucion else "No encontrado",
         "Estructura": estructura.group(0) if estructura else "No encontrado",
@@ -61,8 +78,9 @@ def extraer_datos(texto):
         "Importe": importe.group(0) if importe else "No encontrado"
     }
 
-# ================= ENTRADA Y ANALISIS =================
+# ================= ENTRADA =================
 texto = st.text_area("📥 Pegue el texto del documento aquí")
+
 if st.button("🔍 Analizar texto"):
     registro = extraer_datos(texto)
     st.dataframe(pd.DataFrame([registro]))
@@ -75,10 +93,16 @@ st.subheader("📊 Historial de Registros")
 df_historial = pd.read_sql_query("SELECT * FROM registros", conn)
 st.dataframe(df_historial)
 
-# ================= FORMULARIO CON AJUSTE DE TEXTO =================
+if not df_historial.empty:
+    df_historial.to_excel("historial_auditoria.xlsx", index=False)
+    with open("historial_auditoria.xlsx", "rb") as file:
+        st.download_button("⬇️ Descargar Historial Excel", file, "historial_auditoria.xlsx")
+
+# ================= FORMULARIO CON AJUSTE DE COLUMNAS =================
 st.markdown("---")
 st.header("📋 Formulario de Verificación — Bienes y Servicios")
 
+# Nombres completos para que se ajusten a la celda
 columnas_formulario = [
     "Certificación de Cuota a Comprometer",
     "Certificado de Apropiacion Presupuestario",
@@ -101,16 +125,17 @@ columnas_formulario = [
 
 df_formulario = pd.DataFrame([{col: "√" for col in columnas_formulario}])
 
-# Configuración: Ahora sí respetará el ancho de 85px y el texto bajará
+# Configuración de columnas con el ancho deseado de 85px
 config_columnas = {
     col: st.column_config.SelectboxColumn(
         label=col, 
         options=["√", "N/A"],
-        width=85,  # Ancho pequeño, el CSS hará el resto
+        width=85,
         required=True
     ) for col in columnas_formulario
 }
 
+# El data_editor aplicará el CSS definido arriba para los labels
 tabla_editable = st.data_editor(
     df_formulario,
     column_config=config_columnas,
@@ -123,10 +148,30 @@ tabla_editable = st.data_editor(
 fila = tabla_editable.iloc[0]
 faltantes = [col for col in columnas_formulario if fila[col] == "N/A"]
 expediente_completo = "Sí" if len(faltantes) == 0 else "No"
+
 st.write(f"### Expediente Completo: **{expediente_completo}**")
+
+if faltantes:
+    st.warning("⚠️ Elementos marcados como N/A:")
+    for f in faltantes:
+        st.write("•", f)
 
 if st.button("💾 Guardar Formulario"):
     df_guardar = tabla_editable.copy()
     df_guardar["Expediente Completo"] = expediente_completo
-    df_guardar.to_excel("formulario_bienes_servicios.xlsx", index=False)
-    st.success("Formulario guardado")
+
+    archivo = "formulario_bienes_servicios.xlsx"
+    try:
+        df_existente = pd.read_excel(archivo)
+        df_final = pd.concat([df_existente, df_guardar], ignore_index=True)
+    except:
+        df_final = df_guardar
+
+    df_final.to_excel(archivo, index=False)
+    st.success("Formulario guardado exitosamente")
+
+try:
+    with open("formulario_bienes_servicios.xlsx", "rb") as f:
+        st.download_button("⬇️ Descargar Formularios Excel", f, "formulario_bienes_servicios.xlsx")
+except:
+    pass
