@@ -3,8 +3,8 @@ import pandas as pd
 import re
 import sqlite3
 
-st.set_page_config(page_title="Sistema Auditoría de Pagos", layout="wide")
-st.title("🧾 Sistema de Apoyo a la Auditoría de Pagos")
+st.set_page_config(layout="wide")
+st.title("🧾 Sistema de Apoyo para Auditoría de Pagos")
 
 # ================= BASE DE DATOS =================
 conn = sqlite3.connect("auditoria.db", check_same_thread=False)
@@ -15,123 +15,120 @@ CREATE TABLE IF NOT EXISTS registros (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     institucion TEXT,
     estructura_programatica TEXT,
-    numero_libramiento TEXT,
+    numero_libramiento TEXT UNIQUE,
     importe TEXT
+)
+""")
+
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS formulario_bienes_servicios (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    certificacion TEXT,
+    cuota TEXT,
+    comprometer TEXT,
+    orden_compra TEXT,
+    factura TEXT,
+    recepcion TEXT
 )
 """)
 conn.commit()
 
-def guardar_registro(datos):
-    cursor.execute("""
-        INSERT INTO registros (institucion, estructura_programatica, numero_libramiento, importe)
-        VALUES (?, ?, ?, ?)
-    """, (
-        datos["Institucion"],
-        datos["Estructura"],
-        datos["Libramiento"],
-        datos["Importe"]
-    ))
-    conn.commit()
-
-# ================= EXTRACCIÓN =================
+# ================= EXTRAER DATOS DEL TEXTO =================
 def extraer_datos(texto):
-    institucion = re.search(r'INSTITUTO|MINISTERIO|DIRECCIÓN|AYUNTAMIENTO|UNIVERSIDAD.*', texto, re.IGNORECASE)
-    estructura = re.search(r'\b\d{12}\b', texto)
-    libramiento = re.search(r'\b\d{1,5}\b', texto)
-    importe = re.search(r'RD\$?\s?[\d,]+\.\d{2}', texto)
+    inst = re.search(r'(Ministerio|Dirección|Instituto|Oficina)[^\n]+', texto)
+    est = re.search(r'\b\d{12}\b', texto)
+    lib = re.search(r'\b\d{1,5}\b', texto)
+    imp = re.search(r'(RD\$|\$)\s?[\d,]+(\.\d{2})?', texto)
 
     return {
-        "Institucion": institucion.group(0) if institucion else "No encontrado",
-        "Estructura": estructura.group(0) if estructura else "No encontrado",
-        "Libramiento": libramiento.group(0) if libramiento else "No encontrado",
-        "Importe": importe.group(0) if importe else "No encontrado"
+        "Institucion": inst.group(0) if inst else "",
+        "Estructura Programatica": est.group(0) if est else "",
+        "Numero Libramiento": lib.group(0) if lib else "",
+        "Importe": imp.group(0) if imp else ""
     }
 
-# ================= ENTRADA =================
-texto = st.text_area("📥 Pegue el texto del documento aquí")
+# ================= GUARDAR REGISTRO =================
+def guardar_registro(datos):
+    try:
+        cursor.execute("""
+        INSERT INTO registros (institucion, estructura_programatica, numero_libramiento, importe)
+        VALUES (?, ?, ?, ?)
+        """, (
+            datos["Institucion"],
+            datos["Estructura Programatica"],
+            datos["Numero Libramiento"],
+            datos["Importe"]
+        ))
+        conn.commit()
+    except:
+        pass
 
-if st.button("🔍 Analizar texto"):
+# ================= INTERFAZ TEXTO =================
+texto = st.text_area("📄 Pegue el texto del documento aquí")
+
+if st.button("Procesar información"):
     registro = extraer_datos(texto)
-    st.dataframe(pd.DataFrame([registro]))
     guardar_registro(registro)
-    st.success("Registro guardado")
+    st.success("Registro guardado automáticamente")
 
 # ================= HISTORIAL =================
-st.markdown("---")
-st.subheader("📊 Historial de Registros")
-df_historial = pd.read_sql_query("SELECT * FROM registros", conn)
+st.subheader("📁 Historial de registros almacenados")
+df_historial = pd.read_sql_query("SELECT * FROM registros ORDER BY id DESC", conn)
 st.dataframe(df_historial)
 
+# ================= EXPORTAR EXCEL =================
+st.subheader("⬇️ Exportar historial a Excel")
 if not df_historial.empty:
-    df_historial.to_excel("historial_auditoria.xlsx", index=False)
-    with open("historial_auditoria.xlsx", "rb") as file:
-        st.download_button("⬇️ Descargar Historial Excel", file, "historial_auditoria.xlsx")
+    archivo_excel = "historial_auditoria.xlsx"
+    df_historial.to_excel(archivo_excel, index=False)
 
-# ================= FORMULARIO OPTIMIZADO =================
-st.markdown("---")
-st.header("📋 Formulario de Verificación — Bienes y Servicios")
+    with open(archivo_excel, "rb") as file:
+        st.download_button(
+            label="Descargar archivo Excel",
+            data=file,
+            file_name="historial_auditoria.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
 
-columnas_formulario = [
-    "Certificación\nCuota\nComprometer",
-    "Certificación\nApropiación\nPresupuestaria",
-    "Oficio\nde\nAutorización",
-    "Factura",
-    "Validación\nFirma\nDigital",
-    "Recepción",
-    "RPE",
-    "DGI",
-    "TSS",
-    "Orden\nde\nCompra",
-    "Contrato",
-    "Título\nde\nPropiedad",
-    "Determinación",
-    "Estado\nJurídico\ndel Inmueble",
-    "Tasación",
-    "Aprobación\nMinisterio\nde la Presidencia",
-    "Viaje\nPresidencial"
-]
+# ================= FORMULARIO BIENES Y SERVICIOS =================
+st.subheader("📋 Formulario de Bienes y Servicios")
 
-df_formulario = pd.DataFrame([{col: "√" for col in columnas_formulario}])
+def fila_documento(nombre):
+    col1, col2 = st.columns([2, 1])
 
-tabla_editable = st.data_editor(
-    df_formulario,
-    column_config={col: st.column_config.SelectboxColumn(options=["√", "N/A"]) for col in columnas_formulario},
-    use_container_width=True,
-    num_rows="fixed"
-)
+    with col1:
+        st.markdown(
+            f"""
+            <div style="
+                font-weight: 600;
+                line-height: 1.1;
+                word-wrap: break-word;
+                white-space: normal;
+                font-size: 14px;
+            ">
+                {"<br>".join(nombre.split())}
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
 
-# ================= VALIDACIÓN =================
-fila = tabla_editable.iloc[0]
-faltantes = [col for col in columnas_formulario if fila[col] == "N/A"]
+    with col2:
+        return st.selectbox(" ", ["√", "N/A"], key=nombre)
 
-expediente_completo = "Sí" if len(faltantes) == 0 else "No"
+certificacion = fila_documento("Certificacion Cuota Comprometer")
+orden = fila_documento("Orden Compra")
+factura = fila_documento("Factura")
+recepcion = fila_documento("Recepcion Bienes Servicios")
 
-st.write(f"### Expediente Completo: **{expediente_completo}**")
+if st.button("Guardar Formulario"):
+    cursor.execute("""
+    INSERT INTO formulario_bienes_servicios (certificacion, cuota, comprometer, orden_compra, factura, recepcion)
+    VALUES (?, ?, ?, ?, ?, ?)
+    """, (certificacion, certificacion, certificacion, orden, factura, recepcion))
+    conn.commit()
+    st.success("Formulario guardado")
 
-if faltantes:
-    st.warning("⚠️ Elementos marcados como N/A:")
-    for f in faltantes:
-        st.write("•", f.replace("\n", " "))
-
-# ================= GUARDAR =================
-if st.button("💾 Guardar Formulario"):
-    df_guardar = tabla_editable.copy()
-    df_guardar["Expediente Completo"] = expediente_completo
-
-    archivo = "formulario_bienes_servicios.xlsx"
-
-    try:
-        df_existente = pd.read_excel(archivo)
-        df_final = pd.concat([df_existente, df_guardar], ignore_index=True)
-    except:
-        df_final = df_guardar
-
-    df_final.to_excel(archivo, index=False)
-    st.success("Formulario guardado en Excel")
-
-# ================= DESCARGAR =================
-try:
-    with open("formulario_bienes_servicios.xlsx", "rb") as f:
-        st.download_button("⬇️ Descargar Formularios Excel", f, "formulario_bienes_servicios.xlsx")
-except:
-    st.info("Aún no hay formularios guardados")
+# ================= HISTORIAL FORMULARIO =================
+st.subheader("📂 Historial Formularios")
+df_form = pd.read_sql_query("SELECT * FROM formulario_bienes_servicios ORDER BY id DESC", conn)
+st.dataframe(df_form)
