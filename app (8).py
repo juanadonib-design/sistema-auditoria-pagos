@@ -67,46 +67,47 @@ if not df_historial.empty:
     with open("historial_auditoria.xlsx", "rb") as file:
         st.download_button("⬇️ Descargar Historial Excel", file, "historial_auditoria.xlsx")
 
-# ================= FORMULARIO OPTIMIZADO =================
+# ================= FORMULARIO OPTIMIZADO (CAMBIO SOLICITADO) =================
 st.markdown("---")
 st.header("📋 Formulario de Verificación — Bienes y Servicios")
 
-# Lista con saltos de línea para forzar el formato vertical
+# Nombres de columnas limpios (Excel Style)
 columnas_formulario = [
-    "Certificación\nde Cuota\na Comprometer",
-    "Certificado\nde\nApropiacion\nPresupuestario",
-    "Oficio\nde\nAutorización",
+    "Certificación de Cuota a Comprometer",
+    "Certificado de Apropiacion Presupuestario",
+    "Oficio de Autorización",
     "Factura",
-    "Validación\nFirma\nDigital",
+    "Validación Firma Digital",
     "Recepción",
     "RPE",
     "DGII",
     "TSS",
-    "Orden\nde\nCompra",
+    "Orden de Compra",
     "Contrato",
-    "Título\nde\nPropiedad",
+    "Título de Propiedad",
     "Determinación",
-    "Estado\nJurídico\ndel Inmueble",
+    "Estado Jurídico del Inmueble",
     "Tasación",
-    "Aprobación\nMinisterio\nde la Presidencia",
-    "Viaje\nPresidencial"
+    "Aprobación Ministerio de la Presidencia",
+    "Viaje Presidencial"
 ]
 
 df_formulario = pd.DataFrame([{col: "√" for col in columnas_formulario}])
 
-# CONFIGURACIÓN DE COLUMNAS: Aquí se fuerza el ancho pequeño
+# Forzamos ancho de 85px para que el texto haga "Wrap" verticalmente
 config_columnas = {
     col: st.column_config.SelectboxColumn(
         label=col, 
         options=["√", "N/A"],
-        width="small" # Esto obliga al texto a usar los saltos de línea \n
+        width=85,  
+        required=True
     ) for col in columnas_formulario
 }
 
 tabla_editable = st.data_editor(
     df_formulario,
     column_config=config_columnas,
-    use_container_width=True,
+    use_container_width=False, # Importante: False para que respete el ancho fijo de 85px
     num_rows="fixed",
     hide_index=True
 )
@@ -121,13 +122,11 @@ st.write(f"### Expediente Completo: **{expediente_completo}**")
 if faltantes:
     st.warning("⚠️ Elementos marcados como N/A:")
     for f in faltantes:
-        st.write("•", f.replace("\n", " "))
+        st.write("•", f)
 
 # ================= GUARDAR Y DESCARGAR =================
 if st.button("💾 Guardar Formulario"):
     df_guardar = tabla_editable.copy()
-    # Limpiamos los nombres para el Excel (quitamos los saltos de línea)
-    df_guardar.columns = [c.replace("\n", " ") for c in df_guardar.columns]
     df_guardar["Expediente Completo"] = expediente_completo
 
     archivo = "formulario_bienes_servicios.xlsx"
