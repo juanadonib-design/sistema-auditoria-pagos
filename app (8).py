@@ -33,7 +33,7 @@ def guardar_registro(datos):
     ))
     conn.commit()
 
-# ================= EXTRACCIÓN =================
+# ================= EXTRACCIÓN DE DATOS =================
 def extraer_datos(texto):
     institucion = re.search(r'INSTITUTO|MINISTERIO|DIRECCIÓN|AYUNTAMIENTO|UNIVERSIDAD.*', texto, re.IGNORECASE)
     estructura = re.search(r'\b\d{12}\b', texto)
@@ -47,7 +47,7 @@ def extraer_datos(texto):
         "Importe": importe.group(0) if importe else "No encontrado"
     }
 
-# ================= ENTRADA =================
+# ================= ENTRADA DE TEXTO =================
 texto = st.text_area("📥 Pegue el texto del documento aquí")
 
 if st.button("🔍 Analizar texto"):
@@ -67,31 +67,31 @@ if not df_historial.empty:
     with open("historial_auditoria.xlsx", "rb") as file:
         st.download_button("⬇️ Descargar Historial Excel", file, "historial_auditoria.xlsx")
 
-# ================= FORMULARIO OPTIMIZADO =================
+# ================= FORMULARIO COMPACTO REAL =================
 st.markdown("---")
 st.header("📋 Formulario de Verificación — Bienes y Servicios")
 
 columnas_formulario = [
-    "Certificación\nCuota\nComprometer",
-    "Certificación\nApropiación\nPresupuestaria",
-    "Oficio\nde\nAutorización",
+    "Certificación", "Cuota", "Comprometer",
+    "Apropiación", "Presupuestaria",
+    "Oficio", "Autorización",
     "Factura",
-    "Validación\nFirma\nDigital",
+    "Validación", "Firma", "Digital",
     "Recepción",
-    "RPE",
-    "DGI",
-    "TSS",
-    "Orden\nde\nCompra",
+    "RPE", "DGI", "TSS",
+    "Orden", "Compra",
     "Contrato",
-    "Título\nde\nPropiedad",
+    "Título", "Propiedad",
     "Determinación",
-    "Estado\nJurídico\ndel Inmueble",
+    "Estado Jurídico", "Inmueble",
     "Tasación",
-    "Aprobación\nMinisterio\nde la Presidencia",
-    "Viaje\nPresidencial"
+    "Aprobación", "Ministerio Presidencia",
+    "Viaje Presidencial"
 ]
 
 df_formulario = pd.DataFrame([{col: "√" for col in columnas_formulario}])
+
+st.write("Marque √ si el documento está presente o N/A si no aplica:")
 
 tabla_editable = st.data_editor(
     df_formulario,
@@ -111,9 +111,9 @@ st.write(f"### Expediente Completo: **{expediente_completo}**")
 if faltantes:
     st.warning("⚠️ Elementos marcados como N/A:")
     for f in faltantes:
-        st.write("•", f.replace("\n", " "))
+        st.write("•", f)
 
-# ================= GUARDAR =================
+# ================= GUARDAR FORMULARIO =================
 if st.button("💾 Guardar Formulario"):
     df_guardar = tabla_editable.copy()
     df_guardar["Expediente Completo"] = expediente_completo
@@ -129,7 +129,7 @@ if st.button("💾 Guardar Formulario"):
     df_final.to_excel(archivo, index=False)
     st.success("Formulario guardado en Excel")
 
-# ================= DESCARGAR =================
+# ================= DESCARGAR FORMULARIOS =================
 try:
     with open("formulario_bienes_servicios.xlsx", "rb") as f:
         st.download_button("⬇️ Descargar Formularios Excel", f, "formulario_bienes_servicios.xlsx")
