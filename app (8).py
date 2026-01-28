@@ -1,11 +1,26 @@
 import streamlit as st
 import pandas as pd
 import re
+import sqlite3
 
 st.title("Sistema de apoyo para auditoría de pagos")
 
-texto = st.text_area("Pega aquí el texto del expediente")
+# ================= BASE DE DATOS =================
+conn = sqlite3.connect("auditoria_pagos.db", check_same_thread=False)
+cursor = conn.cursor()
 
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS registros (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    institucion TEXT,
+    estructura_programatica TEXT,
+    numero_libramiento TEXT UNIQUE,
+    importe TEXT
+)
+""")
+conn.commit()
+
+# ================= FUNCION EXTRAER DATOS =================
 def extraer_datos(texto):
     datos = {}
 
@@ -26,9 +41,38 @@ def extraer_datos(texto):
 
     return datos
 
+# ================= GUARDAR AUTOMATICAMENTE =================
+def guardar_registro(datos):
+    try:
+        cursor.execute("""
+            INSERT INTO registros (institucion, estructura_programatica, numero_libramiento, importe)
+            VALUES (?, ?, ?, ?)
+        """, (
+            datos["Institucion"],
+            datos["Estructura programatica"],
+            datos["Numero de libramiento"],
+            datos["Importe"]
+        ))
+        conn.commit()
+        st.success("Registro guardado automáticamente")
+    except sqlite3.IntegrityError:
+        st.info("Este registro ya existe en la base de datos")
+
+# ================= INTERFAZ =================
+texto = st.text_area("Pega aquí el texto del expediente")
 
 if texto:
     registro = extraer_datos(texto)
     df = pd.DataFrame([registro])
+
     st.subheader("Vista previa de datos")
     st.dataframe(df)
+
+    # Si hay datos válidos, guardar automático
+    if registro["Numero de libramiento"]:
+        guardar_registro(registro)
+
+# ================= CONTADOR =================
+cursor.execute("SELECT COUNT(*) FROM registros")
+total = cursor.fetchone()[0]
+st.write(f"📊 Total de registros almacenados: {total}")
