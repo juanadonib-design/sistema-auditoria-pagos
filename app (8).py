@@ -9,11 +9,8 @@ st.title("Sistema de apoyo para auditoría de pagos")
 conn = sqlite3.connect("auditoria_pagos.db", check_same_thread=False)
 cursor = conn.cursor()
 
-# 🔥 RECREAR TABLA (corrige errores anteriores)
-cursor.execute("DROP TABLE IF EXISTS registros")
-
 cursor.execute("""
-CREATE TABLE registros (
+CREATE TABLE IF NOT EXISTS registros (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     institucion TEXT,
     estructura_programatica TEXT,
@@ -71,7 +68,6 @@ if texto:
     st.subheader("Vista previa de datos")
     st.dataframe(df)
 
-    # Guardado automático si hay libramiento
     if registro["Numero de libramiento"]:
         guardar_registro(registro)
 
@@ -79,3 +75,8 @@ if texto:
 cursor.execute("SELECT COUNT(*) FROM registros")
 total = cursor.fetchone()[0]
 st.write(f"📊 Total de registros almacenados: {total}")
+
+# ================= HISTORIAL =================
+st.subheader("📁 Historial de registros almacenados")
+df_historial = pd.read_sql_query("SELECT * FROM registros ORDER BY id DESC", conn)
+st.dataframe(df_historial)
