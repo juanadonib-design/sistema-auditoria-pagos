@@ -10,8 +10,12 @@ texto = st.text_area("Pega aquí el texto del expediente")
 def extraer_datos(texto):
     datos = {}
 
-    inst = re.search(r'Instituci[oó]n\s+([A-ZÁÉÍÓÚÑa-záéíóúñ\s]+)', texto)
-    datos["Institucion"] = inst.group(1).strip() if inst else None
+    inst = re.search(
+    r'Instituci[oó]n\s+([A-ZÁÉÍÓÚÑa-záéíóúñ\s]+?)(?=\s+Estructura|\s+Libramiento|\s+No\.?|\s+RD\$|\s+\$|$)',
+    texto
+)
+datos["Institucion"] = inst.group(1).strip() if inst else None
+
 
     est = re.search(r'\b\d{12}\b', texto)
     datos["Estructura programatica"] = est.group() if est else None
@@ -31,3 +35,4 @@ if texto:
     df = pd.DataFrame([registro])
     st.subheader("Vista previa de datos")
     st.dataframe(df)
+
