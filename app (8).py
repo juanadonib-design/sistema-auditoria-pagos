@@ -16,59 +16,59 @@ CREATE TABLE IF NOT EXISTS registros (
     institucion TEXT,
     estructura_programatica TEXT,
     numero_libramiento TEXT,
-    importe TEXT
+    importe TEXT,
+    clasificacion TEXT
 )
 """)
 conn.commit()
 
-# ================= FUNCIONES DE PERSISTENCIA =================
-def actualizar_db_desde_editor():
-    """Guarda automáticamente los cambios del editor en la BD."""
-    if "editor_historial" in st.session_state:
-        # Obtenemos los datos editados
-        df_editado = st.session_state["editor_historial"]["edited_rows"]
-        # Si hay cambios, podrías procesar fila por fila, 
-        # pero para asegurar integridad con 'replace' lo hacemos simple:
-        pass # La lógica se ejecuta al renderizar para reflejar el estado actual
-
-# ================= EXTRACCIÓN =================
+# ================= EXTRACCIÓN Y CLASIFICACIÓN =================
 def extraer_datos(texto):
     institucion = re.search(r'INSTITUTO|MINISTERIO|DIRECCIÓN|AYUNTAMIENTO|UNIVERSIDAD.*', texto, re.IGNORECASE)
     estructura = re.search(r'\b\d{12}\b', texto)
     libramiento = re.search(r'\b\d{1,5}\b', texto)
     importe = re.search(r'RD\$?\s?[\d,]+\.\d{2}', texto)
+    
+    # CONDICIÓN SOLICITADA: Clasificación por palabras clave
+    clasificacion = "General"
+    if "SERVICIOS BASICOS" in texto:
+        clasificacion = "SERVICIOS BASICOS"
 
     return {
         "institucion": institucion.group(0) if institucion else "No encontrado",
         "estructura_programatica": estructura.group(0) if estructura else "No encontrado",
         "numero_libramiento": libramiento.group(0) if libramiento else "No encontrado",
-        "importe": importe.group(0) if importe else "No encontrado"
+        "importe": importe.group(0) if importe else "No encontrado",
+        "clasificacion": clasificacion
     }
 
 # ================= ENTRADA Y GUARDADO AUTOMÁTICO =================
-# Usamos una clave para limpiar el text_area si fuera necesario
-texto_pegado = st.text_area("📥 Pegue el texto aquí (Análisis y guardado instantáneo)", key="input_auditoria")
+texto_pegado = st.text_area("📥 Pegue el texto aquí (Análisis instantáneo)", key="input_auditoria")
 
 if texto_pegado:
     nuevo_registro = extraer_datos(texto_pegado)
     
+    # Insertar en la base de datos incluyendo la nueva columna de clasificación
     cursor.execute("""
-        INSERT INTO registros (institucion, estructura_programatica, numero_libramiento, importe)
-        VALUES (?, ?, ?, ?)
+        INSERT INTO registros (institucion, estructura_programatica, numero_libramiento, importe, clasificacion)
+        VALUES (?, ?, ?, ?, ?)
     """, (nuevo_registro["institucion"], nuevo_registro["estructura_programatica"], 
-          nuevo_registro["numero_libramiento"], nuevo_registro["importe"]))
+          nuevo_registro["numero_libramiento"], nuevo_registro["importe"], nuevo_registro["clasificacion"]))
     conn.commit()
-    st.toast("✅ Registro detectado y guardado", icon="🚀")
-    # Nota: No usamos st.rerun() aquí para evitar bucles infinitos con el text_area
+    
+    # Alerta visual si detecta Servicios Básicos
+    if nuevo_registro["clasificacion"] == "SERVICIOS BASICOS":
+        st.info("💡 Se ha detectado un expediente de **SERVICIOS BASICOS**. Utilice el Formulario de Bienes y Servicios.")
+    
+    st.toast(f"✅ Registro {nuevo_registro['clasificacion']} guardado", icon="🚀")
 
-# ================= HISTORIAL TOTALMENTE AUTOMÁTICO =================
+# ================= HISTORIAL EDITABLE =================
 st.markdown("---")
 st.subheader("📊 Historial Editable (Autoguardado)")
 
 df_historial = pd.read_sql_query("SELECT * FROM registros ORDER BY id DESC", conn)
 
 if not df_historial.empty:
-    # Al editar cualquier celda, el cambio se guarda al instante al interactuar
     historial_editado = st.data_editor(
         df_historial,
         key="editor_historial",
@@ -77,27 +77,25 @@ if not df_historial.empty:
         num_rows="dynamic"
     )
 
-    # Sincronización automática con la base de datos
-    # Si el dataframe editado es distinto al de la base de datos, sobreescribimos
     if not historial_editado.equals(df_historial):
         historial_editado.to_sql("registros", conn, if_exists="replace", index=False)
         st.toast("💾 Cambios guardados automáticamente", icon="☁️")
 else:
     st.info("El historial aparecerá aquí en cuanto pegue información.")
 
-# ================= FUNCIÓN PARA FORMULARIOS VERTICALES =================
-def crear_formulario_auditoria(titulo, columnas, clave_storage):
-    st.markdown("---")
-    st.header(f"📋 {titulo}")
+# ================= FUNCIÓN PARA FORMULARIOS =================
+def crear_formulario_auditoria(titulo, columnas, clave_storage, resaltar=False):
+    # Si resaltar es True (porque es Servicios Básicos), añadimos un borde o color
+    if resaltar:
+        st.markdown(f"### 🌟 {titulo} (Sugerido para Servicios Básicos)")
+    else:
+        st.markdown(f"### 📋 {titulo}")
     
     df_init = pd.DataFrame([{col: "√" for col in columnas}])
     
     config = {
         col: st.column_config.SelectboxColumn(
-            label=col, 
-            options=["√", "N/A"],
-            width=65, 
-            required=True
+            label=col, options=["√", "N/A"], width=65, required=True
         ) for col in columnas
     }
 
@@ -110,12 +108,19 @@ def crear_formulario_auditoria(titulo, columnas, clave_storage):
     )
 
 # ================= RENDERIZADO DE FORMULARIOS =================
+# Chequeamos si el último registro fue Servicios Básicos para resaltar el formulario
+es_servicios_basicos = False
+if not df_historial.empty:
+    es_servicios_basicos = df_historial.iloc[0]["clasificacion"] == "SERVICIOS BASICOS"
 
+# 1. BIENES Y SERVICIOS (Relacionado con Servicios Básicos)
 cols_bienes = ["CC", "CP", "OFI", "FACT", "FIRMA DIGITAL", "Recep", "RPE", "DGII", "TSS", "OC", "CONT", "TITULO", "DETE", "JURI INMO", "TASACIÓN", "APROB. PRESI", "VIAJE PRESI"]
-crear_formulario_auditoria("Formulario Bienes y Servicios", cols_bienes, "f_bienes")
+crear_formulario_auditoria("Formulario Bienes y Servicios", cols_bienes, "f_bienes", resaltar=es_servicios_basicos)
 
+# 2. TRANSFERENCIAS
 cols_transf = ["OFI", "FIRMA DIGITAL", "PRES", "OFIC", "BENE", "NÓMINA", "CARTA RUTA", "RNC", "MERCADO VA", "DECRETO", "CONGRESO", "DIR. FIDE", "CONTR. FIDU", "DEUDA EXT", "ANTICIPO"]
 crear_formulario_auditoria("Formulario de Transferencias", cols_transf, "f_transf")
 
+# 3. OBRAS
 cols_obras = ["CC", "CP", "OFI", "FIRMA DIGITAL", "FACT", "Recep", "RPE", "DGII", "TSS", "OC", "CONT", "EVATEC", "CU", "SUP", "Cierre de Obra", "20%", "AVA", "FIEL"]
 crear_formulario_auditoria("Formulario de Obras", cols_obras, "f_obras")
