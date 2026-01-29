@@ -28,7 +28,6 @@ st.markdown("""
 conn = sqlite3.connect("auditoria.db", check_same_thread=False)
 cursor = conn.cursor()
 
-# Tabla de Registros Generales
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS registros (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -40,7 +39,6 @@ CREATE TABLE IF NOT EXISTS registros (
 )
 """)
 
-# 🏗 PASO 1 — Tabla de Formulario Ligada (Relación 1 a 1)
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS formulario_bienes_servicios (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -98,51 +96,53 @@ if st.button("📤 Enviar al Historial"):
         conn.commit()
 
         if nuevo_registro["clasificacion"] == "SERVICIOS BASICOS":
-            alerta = st.empty()
-            alerta.success("🚀 CLASIFICACIÓN DETECTADA: BIENES Y SERVICIOS")
+            alerta = st.success("🚀 BIENES Y SERVICIOS")
             time.sleep(3)
             alerta.empty()
         st.rerun()
 
-# ================= HISTORIAL =================
+# ================= HISTORIAL CON PAPELERA NATIVA =================
 st.markdown("---")
 st.subheader("📊 Historial")
+
 df_historial = pd.read_sql_query("SELECT * FROM registros ORDER BY id DESC", conn)
 
 if not df_historial.empty:
-    st.dataframe(df_historial, use_container_width=True, hide_index=True)
+    # 🗑️ Al usar num_rows="dynamic", Streamlit habilita la papelera automáticamente
+    # al seleccionar filas en el lado izquierdo.
+    df_editado = st.data_editor(
+        df_historial, 
+        use_container_width=True, 
+        hide_index=True, 
+        num_rows="dynamic",
+        key="historial_editor_nacional"
+    )
 
-    # 🗑️ SECCIÓN PARA ELIMINAR REGISTROS (AÑADIDO)
-    with st.expander("⚙️ Gestionar Historial (Eliminar registros)"):
-        col_del1, col_del2 = st.columns([1, 2])
-        id_a_eliminar = col_del1.selectbox(
-            "Seleccione ID para eliminar", 
-            df_historial["id"].tolist(), 
-            key="delete_id_selector"
-        )
+    # Lógica para detectar si se borró algo y sincronizar con la DB
+    if len(df_editado) < len(df_historial):
+        # Identificamos qué IDs ya no están en el DataFrame editado
+        ids_actuales = df_editado["id"].tolist()
+        ids_anteriores = df_historial["id"].tolist()
+        ids_a_borrar = [x for x in ids_anteriores if x not in ids_actuales]
         
-        if col_del2.button("❌ Eliminar Permanentemente"):
-            try:
-                # 1. Borrar primero el formulario vinculado (integridad referencial)
-                cursor.execute("DELETE FROM formulario_bienes_servicios WHERE registro_id = ?", (id_a_eliminar,))
-                # 2. Borrar el registro del historial
-                cursor.execute("DELETE FROM registros WHERE id = ?", (id_a_eliminar,))
-                conn.commit()
-                
-                st.toast(f"Registro #{id_a_eliminar} eliminado con éxito")
-                time.sleep(1)
-                st.rerun()
-            except Exception as e:
-                st.error(f"Error al eliminar: {e}")
+        for id_borrar in ids_a_borrar:
+            cursor.execute("DELETE FROM formulario_bienes_servicios WHERE registro_id = ?", (id_borrar,))
+            cursor.execute("DELETE FROM registros WHERE id = ?", (id_borrar,))
+        
+        conn.commit()
+        st.toast("🗑️ Registros eliminados correctamente")
+        time.sleep(1)
+        st.rerun()
 else:
     st.info("No hay registros en el historial.")
 
 # ================= SELECTOR DE EXPEDIENTE =================
+st.markdown("---")
 registro_sel = None
 if not df_historial.empty:
     def formato_seguro(x):
         fila = df_historial[df_historial["id"] == x]
-        return f"Expediente #{x} — {fila.iloc[0]['institucion']} (Lib. {fila.iloc[0]['numero_libramiento']})" if not fila.empty else f"#{x}"
+        return f"Expediente #{x} — {fila.iloc[0]['institucion']}" if not fila.empty else f"#{x}"
 
     registro_sel = st.selectbox(
         "📌 Seleccione expediente para trabajar el formulario:",
@@ -150,25 +150,17 @@ if not df_historial.empty:
         format_func=formato_seguro
     )
 
-# ================= LÓGICA DE FORMULARIOS LIGADOS =================
-
+# ================= FORMULARIOS =================
 def crear_formulario_bienes_servicios(registro_id, en_uso=False):
-    columnas = ["CC","CP","OFI","FACT","FIRMA_DIGITAL","Recep","RPE","DGII","TSS","OC",
-                "CONT","TITULO","DETE","JURI_INMO","TASACION","APROB_PRESI","VIAJE_PRESI"]
-
+    columnas = ["CC","CP","OFI","FACT","FIRMA_DIGITAL","Recep","RPE","DGII","TSS","OC","CONT","TITULO","DETE","JURI_INMO","TASACION","APROB_PRESI","VIAJE_PRESI"]
+    
     if en_uso:
         st.markdown(f'### 📋 Bienes y Servicios <span class="badge-en-uso">En uso</span>', unsafe_allow_html=True)
     else:
         st.markdown("### 📋 Bienes y Servicios")
 
-    df_guardado = pd.read_sql_query(
-        f"SELECT * FROM formulario_bienes_servicios WHERE registro_id={registro_id}", conn
-    )
-
-    if df_guardado.empty:
-        df = pd.DataFrame([{col:"√" for col in columnas}])
-    else:
-        df = df_guardado[columnas]
+    df_guardado = pd.read_sql_query(f"SELECT * FROM formulario_bienes_servicios WHERE registro_id={registro_id}", conn)
+    df = df_guardado[columnas] if not df_guardado.empty else pd.DataFrame([{col:"√" for col in columnas}])
 
     config = {col: st.column_config.SelectboxColumn(options=["√","N/A"], width=65) for col in columnas}
     df_editado = st.data_editor(df, column_config=config, hide_index=True, key=f"editor_{registro_id}")
@@ -180,34 +172,21 @@ def crear_formulario_bienes_servicios(registro_id, en_uso=False):
             (registro_id, CC, CP, OFI, FACT, FIRMA_DIGITAL, Recep, RPE, DGII, TSS, OC, CONT, TITULO, DETE, JURI_INMO, TASACION, APROB_PRESI, VIAJE_PRESI)
             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             ON CONFLICT(registro_id) DO UPDATE SET
-            CC=excluded.CC, CP=excluded.CP, OFI=excluded.OFI, FACT=excluded.FACT,
-            FIRMA_DIGITAL=excluded.FIRMA_DIGITAL, Recep=excluded.Recep, RPE=excluded.RPE,
-            DGII=excluded.DGII, TSS=excluded.TSS, OC=excluded.OC, CONT=excluded.CONT,
-            TITULO=excluded.TITULO, DETE=excluded.DETE, JURI_INMO=excluded.JURI_INMO,
-            TASACION=excluded.TASACION, APROB_PRESI=excluded.APROB_PRESI, VIAJE_PRESI=excluded.VIAJE_PRESI
+            CC=excluded.CC, CP=excluded.CP, OFI=excluded.OFI, FACT=excluded.FACT, FIRMA_DIGITAL=excluded.FIRMA_DIGITAL, Recep=excluded.Recep, RPE=excluded.RPE, DGII=excluded.DGII, TSS=excluded.TSS, OC=excluded.OC, CONT=excluded.CONT, TITULO=excluded.TITULO, DETE=excluded.DETE, JURI_INMO=excluded.JURI_INMO, TASACION=excluded.TASACION, APROB_PRESI=excluded.APROB_PRESI, VIAJE_PRESI=excluded.VIAJE_PRESI
         """, (registro_id, *datos.values()))
         conn.commit()
-        st.success(f"✅ Formulario guardado y vinculado al expediente #{registro_id}")
+        st.success(f"✅ Guardado en #{registro_id}")
 
 def crear_formulario_generico(titulo, columnas, clave):
     st.markdown(f"### 📋 {titulo}")
     df = pd.DataFrame([{col: "√" for col in columnas}])
     config = {col: st.column_config.SelectboxColumn(options=["√", "N/A"], width=65) for col in columnas}
-    st.data_editor(df, column_config=config, use_container_width=False, hide_index=True, key=clave)
-
-st.markdown("---")
+    st.data_editor(df, column_config=config, hide_index=True, key=clave)
 
 if registro_sel:
     fila_sel = df_historial[df_historial["id"] == registro_sel]
     es_sb = fila_sel.iloc[0]["clasificacion"] == "SERVICIOS BASICOS" if not fila_sel.empty else False
     crear_formulario_bienes_servicios(registro_sel, en_uso=es_sb)
 
-crear_formulario_generico("Transferencias",
-    ["OFI", "FIRMA DIGITAL", "PRES", "OFIC", "BENE", "NÓMINA", "CARTA RUTA", "RNC", "MERCADO VA", "DECRETO", "CONGRESO", "DIR. FIDE", "CONTR. FIDU", "DEUDA EXT", "ANTICIPO"],
-    "f_t"
-)
-
-crear_formulario_generico("Obras",
-    ["CC", "CP", "OFI", "FIRMA DIGITAL", "FACT", "Recep", "RPE", "DGII", "TSS", "OC", "CONT", "EVATEC", "CU", "SUP", "Cierre de Obra", "20%", "AVA", "FIEL"],
-    "f_o"
-)
+crear_formulario_generico("Transferencias", ["OFI", "FIRMA DIGITAL", "PRES", "OFIC", "BENE", "NÓMINA", "CARTA RUTA", "RNC", "MERCADO VA", "DECRETO", "CONGRESO", "DIR. FIDE", "CONTR. FIDU", "DEUDA EXT", "ANTICIPO"], "f_t")
+crear_formulario_generico("Obras", ["CC", "CP", "OFI", "FIRMA DIGITAL", "FACT", "Recep", "RPE", "DGII", "TSS", "OC", "CONT", "EVATEC", "CU", "SUP", "Cierre de Obra", "20%", "AVA", "FIEL"], "f_o")
