@@ -112,6 +112,31 @@ df_historial = pd.read_sql_query("SELECT * FROM registros ORDER BY id DESC", con
 if not df_historial.empty:
     st.dataframe(df_historial, use_container_width=True, hide_index=True)
 
+    # 🗑️ SECCIÓN PARA ELIMINAR REGISTROS (AÑADIDO)
+    with st.expander("⚙️ Gestionar Historial (Eliminar registros)"):
+        col_del1, col_del2 = st.columns([1, 2])
+        id_a_eliminar = col_del1.selectbox(
+            "Seleccione ID para eliminar", 
+            df_historial["id"].tolist(), 
+            key="delete_id_selector"
+        )
+        
+        if col_del2.button("❌ Eliminar Permanentemente"):
+            try:
+                # 1. Borrar primero el formulario vinculado (integridad referencial)
+                cursor.execute("DELETE FROM formulario_bienes_servicios WHERE registro_id = ?", (id_a_eliminar,))
+                # 2. Borrar el registro del historial
+                cursor.execute("DELETE FROM registros WHERE id = ?", (id_a_eliminar,))
+                conn.commit()
+                
+                st.toast(f"Registro #{id_a_eliminar} eliminado con éxito")
+                time.sleep(1)
+                st.rerun()
+            except Exception as e:
+                st.error(f"Error al eliminar: {e}")
+else:
+    st.info("No hay registros en el historial.")
+
 # ================= SELECTOR DE EXPEDIENTE =================
 registro_sel = None
 if not df_historial.empty:
@@ -127,7 +152,6 @@ if not df_historial.empty:
 
 # ================= LÓGICA DE FORMULARIOS LIGADOS =================
 
-# 🧠 PASO 2 — Función para Cargar/Guardar Formulario de Bienes y Servicios
 def crear_formulario_bienes_servicios(registro_id, en_uso=False):
     columnas = ["CC","CP","OFI","FACT","FIRMA_DIGITAL","Recep","RPE","DGII","TSS","OC",
                 "CONT","TITULO","DETE","JURI_INMO","TASACION","APROB_PRESI","VIAJE_PRESI"]
@@ -137,7 +161,6 @@ def crear_formulario_bienes_servicios(registro_id, en_uso=False):
     else:
         st.markdown("### 📋 Bienes y Servicios")
 
-    # Buscar si ya existe formulario guardado para este ID
     df_guardado = pd.read_sql_query(
         f"SELECT * FROM formulario_bienes_servicios WHERE registro_id={registro_id}", conn
     )
@@ -145,15 +168,11 @@ def crear_formulario_bienes_servicios(registro_id, en_uso=False):
     if df_guardado.empty:
         df = pd.DataFrame([{col:"√" for col in columnas}])
     else:
-        # Renombramos columnas del SQL para que coincidan con la lista
         df = df_guardado[columnas]
 
     config = {col: st.column_config.SelectboxColumn(options=["√","N/A"], width=65) for col in columnas}
-    
-    # Editor de datos
     df_editado = st.data_editor(df, column_config=config, hide_index=True, key=f"editor_{registro_id}")
 
-    # 🔹 BOTÓN GUARDAR LIGADO AL ID
     if st.button("💾 Guardar Cambios en Formulario"):
         datos = df_editado.iloc[0].to_dict()
         cursor.execute("""
@@ -170,7 +189,6 @@ def crear_formulario_bienes_servicios(registro_id, en_uso=False):
         conn.commit()
         st.success(f"✅ Formulario guardado y vinculado al expediente #{registro_id}")
 
-# Función genérica para los otros formularios (mientras no se liguen a BD)
 def crear_formulario_generico(titulo, columnas, clave):
     st.markdown(f"### 📋 {titulo}")
     df = pd.DataFrame([{col: "√" for col in columnas}])
@@ -179,16 +197,11 @@ def crear_formulario_generico(titulo, columnas, clave):
 
 st.markdown("---")
 
-# 🧠 PASO 3 — Llamada Condicional
 if registro_sel:
-    # Chequear clasificación del seleccionado para el círculo verde
     fila_sel = df_historial[df_historial["id"] == registro_sel]
     es_sb = fila_sel.iloc[0]["clasificacion"] == "SERVICIOS BASICOS" if not fila_sel.empty else False
-    
-    # Renderizar formulario persistente
     crear_formulario_bienes_servicios(registro_sel, en_uso=es_sb)
 
-# Otros formularios (pendientes de ligar a sus propias tablas)
 crear_formulario_generico("Transferencias",
     ["OFI", "FIRMA DIGITAL", "PRES", "OFIC", "BENE", "NÓMINA", "CARTA RUTA", "RNC", "MERCADO VA", "DECRETO", "CONGRESO", "DIR. FIDE", "CONTR. FIDU", "DEUDA EXT", "ANTICIPO"],
     "f_t"
