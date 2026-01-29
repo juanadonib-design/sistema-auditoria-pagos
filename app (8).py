@@ -21,18 +21,6 @@ CREATE TABLE IF NOT EXISTS registros (
 """)
 conn.commit()
 
-def guardar_registro(datos):
-    cursor.execute("""
-        INSERT INTO registros (institucion, estructura_programatica, numero_libramiento, importe)
-        VALUES (?, ?, ?, ?)
-    """, (
-        datos["Institucion"],
-        datos["Estructura"],
-        datos["Libramiento"],
-        datos["Importe"]
-    ))
-    conn.commit()
-
 # ================= EXTRACCIÓN =================
 def extraer_datos(texto):
     institucion = re.search(r'INSTITUTO|MINISTERIO|DIRECCIÓN|AYUNTAMIENTO|UNIVERSIDAD.*', texto, re.IGNORECASE)
@@ -41,41 +29,57 @@ def extraer_datos(texto):
     importe = re.search(r'RD\$?\s?[\d,]+\.\d{2}', texto)
 
     return {
-        "Institucion": institucion.group(0) if institucion else "No encontrado",
-        "Estructura": estructura.group(0) if estructura else "No encontrado",
-        "Libramiento": libramiento.group(0) if libramiento else "No encontrado",
-        "Importe": importe.group(0) if importe else "No encontrado"
+        "institucion": institucion.group(0) if institucion else "No encontrado",
+        "estructura_programatica": estructura.group(0) if estructura else "No encontrado",
+        "numero_libramiento": libramiento.group(0) if libramiento else "No encontrado",
+        "importe": importe.group(0) if importe else "No encontrado"
     }
 
-# ================= ENTRADA AUTOMÁTICA POR PEGADO =================
-texto_pegado = st.text_area("📥 Pegue el texto del documento aquí (El análisis es automático)")
+# ================= ENTRADA Y GUARDADO AUTOMÁTICO =================
+texto_pegado = st.text_area("📥 Pegue el texto aquí (Se guardará automáticamente en el historial)")
 
-# Si hay texto, se analiza de una vez sin esperar al botón
 if texto_pegado:
-    registro = extraer_datos(texto_pegado)
+    nuevo_registro = extraer_datos(texto_pegado)
     
-    st.write("### 🔍 Datos Detectados")
-    st.table(pd.DataFrame([registro]))
-    
-    # El botón ahora solo sirve para CONFIRMAR el guardado en la DB
-    if st.button("💾 Confirmar y Guardar en Historial"):
-        guardar_registro(registro)
-        st.success("Registro guardado en el historial")
+    # Verificamos si ya existe para evitar duplicados al recargar (opcional)
+    cursor.execute("""
+        INSERT INTO registros (institucion, estructura_programatica, numero_libramiento, importe)
+        VALUES (?, ?, ?, ?)
+    """, (nuevo_registro["institucion"], nuevo_registro["estructura_programatica"], 
+          nuevo_registro["numero_libramiento"], nuevo_registro["importe"]))
+    conn.commit()
+    st.toast("✅ Registro agregado automáticamente al historial", icon="📝")
 
-# ================= HISTORIAL =================
+# ================= HISTORIAL EDITABLE =================
 st.markdown("---")
-st.subheader("📊 Historial de Registros")
-df_historial = pd.read_sql_query("SELECT * FROM registros", conn)
-st.dataframe(df_historial)
+st.subheader("📊 Historial de Registros (Editable por el Auditor)")
 
-# ================= FUNCIÓN PARA CREAR FORMULARIOS VERTICALES =================
+df_historial = pd.read_sql_query("SELECT * FROM registros ORDER BY id DESC", conn)
+
+if not df_historial.empty:
+    # El editor permite al auditor corregir datos directamente
+    historial_editado = st.data_editor(
+        df_historial,
+        key="editor_historial",
+        hide_index=True,
+        use_container_width=True,
+        num_rows="dynamic" # Permite borrar filas seleccionándolas y pulsando 'Delete'
+    )
+
+    # Lógica para guardar cambios realizados por el auditor
+    if st.button("💾 Guardar Cambios en Historial"):
+        historial_editado.to_sql("registros", conn, if_exists="replace", index=False)
+        st.success("Cambios guardados correctamente")
+else:
+    st.info("El historial aparecerá aquí en cuanto pegue información.")
+
+# ================= FUNCIÓN PARA FORMULARIOS VERTICALES =================
 def crear_formulario_auditoria(titulo, columnas, clave_storage):
     st.markdown("---")
     st.header(f"📋 {titulo}")
     
     df_init = pd.DataFrame([{col: "√" for col in columnas}])
     
-    # Mantenemos el ancho de 65px para forzar el formato vertical tipo sello
     config = {
         col: st.column_config.SelectboxColumn(
             label=col, 
@@ -85,23 +89,15 @@ def crear_formulario_auditoria(titulo, columnas, clave_storage):
         ) for col in columnas
     }
 
-    editor = st.data_editor(
+    st.data_editor(
         df_init,
         column_config=config,
         use_container_width=False,
         hide_index=True,
         key=clave_storage
     )
-    
-    fila = editor.iloc[0]
-    faltantes = [col for col in columnas if fila[col] == "N/A"]
-    
-    if faltantes:
-        st.warning(f"⚠️ Faltan en {titulo}: {', '.join(faltantes)}")
-    else:
-        st.success(f"✅ Expediente de {titulo} completo")
 
-# ================= RENDERIZADO DE LOS 3 FORMULARIOS =================
+# ================= RENDERIZADO DE FORMULARIOS =================
 
 # 1. BIENES Y SERVICIOS
 cols_bienes = ["CC", "CP", "OFI", "FACT", "FIRMA DIGITAL", "Recep", "RPE", "DGII", "TSS", "OC", "CONT", "TITULO", "DETE", "JURI INMO", "TASACIÓN", "APROB. PRESI", "VIAJE PRESI"]
@@ -114,6 +110,3 @@ crear_formulario_auditoria("Formulario de Transferencias", cols_transf, "f_trans
 # 3. OBRAS
 cols_obras = ["CC", "CP", "OFI", "FIRMA DIGITAL", "FACT", "Recep", "RPE", "DGII", "TSS", "OC", "CONT", "EVATEC", "CU", "SUP", "Cierre de Obra", "20%", "AVA", "FIEL"]
 crear_formulario_auditoria("Formulario de Obras", cols_obras, "f_obras")
-
-st.markdown("---")
-st.info("Complete las verificaciones arriba y presione Ctrl+P para imprimir su reporte si es necesario.")
