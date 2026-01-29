@@ -10,7 +10,7 @@ st.title("🧾 Sistema de Apoyo a la Auditoría de Pagos")
 conn = sqlite3.connect("auditoria.db", check_same_thread=False)
 cursor = conn.cursor()
 
-# 1. Creamos la tabla base si no existe
+# Creamos la tabla base si no existe
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS registros (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -21,40 +21,50 @@ CREATE TABLE IF NOT EXISTS registros (
 )
 """)
 
-# 2. VERIFICACIÓN DE COLUMNA: Agrega 'clasificacion' si no existe (Evita el OperationalError)
+# Verificación de columna 'clasificacion' para evitar OperationalError
 cursor.execute("PRAGMA table_info(registros)")
 columnas = [info[1] for info in cursor.fetchall()]
 if "clasificacion" not in columnas:
     cursor.execute("ALTER TABLE registros ADD COLUMN clasificacion TEXT DEFAULT 'General'")
     conn.commit()
 
-# ================= EXTRACCIÓN Y CLASIFICACIÓN =================
+# ================= EXTRACCIÓN Y CLASIFICACIÓN OPTIMIZADA =================
 def extraer_datos(texto):
-    institucion = re.search(r'INSTITUTO|MINISTERIO|DIRECCIÓN|AYUNTAMIENTO|UNIVERSIDAD.*', texto, re.IGNORECASE)
-    estructura = re.search(r'\b\d{12}\b', texto)
-    libramiento = re.search(r'\b\d{1,5}\b', texto)
-    importe = re.search(r'RD\$?\s?[\d,]+\.\d{2}', texto)
+    # INSTITUCIÓN: Busca palabras clave y captura el resto de la línea
+    institucion_match = re.search(r'(INSTITUTO|MINISTERIO|DIRECCIÓN|AYUNTAMIENTO|UNIVERSIDAD|CONSEJO|TESORERÍA|CONTRALORÍA)\b.*', texto, re.IGNORECASE)
+    
+    # ESTRUCTURA: Busca exactamente 12 dígitos (Estándar SIGEF)
+    estructura_match = re.search(r'\b\d{12}\b', texto)
+    
+    # LIBRAMIENTO: Intenta buscar etiquetas comunes primero para no fallar
+    libramiento_match = re.search(r'(?:LIBRAMIENTO|NÚMERO|NO\.|Nº)\s*[:#-]?\s*(\b\d{1,10}\b)', texto, re.IGNORECASE)
+    
+    # Si no encuentra etiqueta, busca un número corto aislado (1-6 dígitos)
+    if not libramiento_match:
+        libramiento_match = re.search(r'\b\d{1,6}\b', texto)
+
+    # IMPORTE: Busca el formato de moneda dominicano
+    importe_match = re.search(r'RD\$?\s?[\d,]+\.\d{2}', texto)
     
     # Condición para SERVICIOS BASICOS
     clasificacion = "General"
-    if "SERVICIOS BASICOS" in texto:
+    if "SERVICIOS BASICOS" in texto.upper():
         clasificacion = "SERVICIOS BASICOS"
 
     return {
-        "institucion": institucion.group(0) if institucion else "No encontrado",
-        "estructura_programatica": estructura.group(0) if estructura else "No encontrado",
-        "numero_libramiento": libramiento.group(0) if libramiento else "No encontrado",
-        "importe": importe.group(0) if importe else "No encontrado",
+        "institucion": institucion_match.group(0).strip() if institucion_match else "No encontrado",
+        "estructura_programatica": estructura_match.group(0) if estructura_match else "No encontrado",
+        "numero_libramiento": libramiento_match.group(1) if (libramiento_match and len(libramiento_match.groups()) > 0) else (libramiento_match.group(0) if libramiento_match else "No encontrado"),
+        "importe": importe_match.group(0) if importe_match else "No encontrado",
         "clasificacion": clasificacion
     }
 
 # ================= ENTRADA Y GUARDADO AUTOMÁTICO =================
-texto_pegado = st.text_area("📥 Pegue el texto aquí (Análisis instantáneo)", key="input_auditoria")
+texto_pegado = st.text_area("📥 Pegue el texto aquí (Análisis y guardado instantáneo)", key="input_auditoria")
 
 if texto_pegado:
     nuevo_registro = extraer_datos(texto_pegado)
     
-    # Ahora la inserción no fallará porque la columna ya existe
     cursor.execute("""
         INSERT INTO registros (institucion, estructura_programatica, numero_libramiento, importe, clasificacion)
         VALUES (?, ?, ?, ?, ?)
@@ -63,11 +73,11 @@ if texto_pegado:
     conn.commit()
     
     if nuevo_registro["clasificacion"] == "SERVICIOS BASICOS":
-        st.info("💡 Se ha detectado un expediente de **SERVICIOS BASICOS**. Utilice el Formulario de Bienes y Servicios.")
+        st.info("💡 Se ha detectado un expediente de **SERVICIOS BASICOS**. El Formulario de Bienes y Servicios ha sido resaltado.")
     
     st.toast(f"✅ Registro {nuevo_registro['clasificacion']} guardado", icon="🚀")
 
-# ================= HISTORIAL EDITABLE =================
+# ================= HISTORIAL EDITABLE (AUTOGUARDADO) =================
 st.markdown("---")
 st.subheader("📊 Historial Editable (Autoguardado)")
 
@@ -82,6 +92,7 @@ if not df_historial.empty:
         num_rows="dynamic"
     )
 
+    # Si el auditor modifica algo en el historial, se guarda solo
     if not historial_editado.equals(df_historial):
         historial_editado.to_sql("registros", conn, if_exists="replace", index=False)
         st.toast("💾 Cambios guardados automáticamente", icon="☁️")
@@ -91,7 +102,7 @@ else:
 # ================= FUNCIÓN PARA FORMULARIOS =================
 def crear_formulario_auditoria(titulo, columnas, clave_storage, resaltar=False):
     if resaltar:
-        st.markdown(f"### 🌟 {titulo} (Sugerido para Servicios Básicos)")
+        st.markdown(f"### 🌟 {titulo} (Recomendado)")
     else:
         st.markdown(f"### 📋 {titulo}")
     
