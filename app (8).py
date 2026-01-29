@@ -6,21 +6,27 @@ import sqlite3
 st.set_page_config(page_title="Sistema Auditoría de Pagos", layout="wide")
 st.title("🧾 Sistema de Apoyo a la Auditoría de Pagos")
 
-# ================= BASE DE DATOS =================
+# ================= BASE DE DATOS (CON REPARACIÓN AUTOMÁTICA) =================
 conn = sqlite3.connect("auditoria.db", check_same_thread=False)
 cursor = conn.cursor()
 
+# 1. Creamos la tabla base si no existe
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS registros (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     institucion TEXT,
     estructura_programatica TEXT,
     numero_libramiento TEXT,
-    importe TEXT,
-    clasificacion TEXT
+    importe TEXT
 )
 """)
-conn.commit()
+
+# 2. VERIFICACIÓN DE COLUMNA: Agrega 'clasificacion' si no existe (Evita el OperationalError)
+cursor.execute("PRAGMA table_info(registros)")
+columnas = [info[1] for info in cursor.fetchall()]
+if "clasificacion" not in columnas:
+    cursor.execute("ALTER TABLE registros ADD COLUMN clasificacion TEXT DEFAULT 'General'")
+    conn.commit()
 
 # ================= EXTRACCIÓN Y CLASIFICACIÓN =================
 def extraer_datos(texto):
@@ -29,7 +35,7 @@ def extraer_datos(texto):
     libramiento = re.search(r'\b\d{1,5}\b', texto)
     importe = re.search(r'RD\$?\s?[\d,]+\.\d{2}', texto)
     
-    # CONDICIÓN SOLICITADA: Clasificación por palabras clave
+    # Condición para SERVICIOS BASICOS
     clasificacion = "General"
     if "SERVICIOS BASICOS" in texto:
         clasificacion = "SERVICIOS BASICOS"
@@ -48,7 +54,7 @@ texto_pegado = st.text_area("📥 Pegue el texto aquí (Análisis instantáneo)"
 if texto_pegado:
     nuevo_registro = extraer_datos(texto_pegado)
     
-    # Insertar en la base de datos incluyendo la nueva columna de clasificación
+    # Ahora la inserción no fallará porque la columna ya existe
     cursor.execute("""
         INSERT INTO registros (institucion, estructura_programatica, numero_libramiento, importe, clasificacion)
         VALUES (?, ?, ?, ?, ?)
@@ -56,7 +62,6 @@ if texto_pegado:
           nuevo_registro["numero_libramiento"], nuevo_registro["importe"], nuevo_registro["clasificacion"]))
     conn.commit()
     
-    # Alerta visual si detecta Servicios Básicos
     if nuevo_registro["clasificacion"] == "SERVICIOS BASICOS":
         st.info("💡 Se ha detectado un expediente de **SERVICIOS BASICOS**. Utilice el Formulario de Bienes y Servicios.")
     
@@ -85,7 +90,6 @@ else:
 
 # ================= FUNCIÓN PARA FORMULARIOS =================
 def crear_formulario_auditoria(titulo, columnas, clave_storage, resaltar=False):
-    # Si resaltar es True (porque es Servicios Básicos), añadimos un borde o color
     if resaltar:
         st.markdown(f"### 🌟 {titulo} (Sugerido para Servicios Básicos)")
     else:
@@ -108,12 +112,11 @@ def crear_formulario_auditoria(titulo, columnas, clave_storage, resaltar=False):
     )
 
 # ================= RENDERIZADO DE FORMULARIOS =================
-# Chequeamos si el último registro fue Servicios Básicos para resaltar el formulario
 es_servicios_basicos = False
 if not df_historial.empty:
     es_servicios_basicos = df_historial.iloc[0]["clasificacion"] == "SERVICIOS BASICOS"
 
-# 1. BIENES Y SERVICIOS (Relacionado con Servicios Básicos)
+# 1. BIENES Y SERVICIOS
 cols_bienes = ["CC", "CP", "OFI", "FACT", "FIRMA DIGITAL", "Recep", "RPE", "DGII", "TSS", "OC", "CONT", "TITULO", "DETE", "JURI INMO", "TASACIÓN", "APROB. PRESI", "VIAJE PRESI"]
 crear_formulario_auditoria("Formulario Bienes y Servicios", cols_bienes, "f_bienes", resaltar=es_servicios_basicos)
 
