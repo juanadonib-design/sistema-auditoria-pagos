@@ -24,6 +24,10 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# ================= CONTROL ANTI DUPLICADO =================
+if "texto_input" not in st.session_state:
+    st.session_state.texto_input = ""
+
 # ================= BASE DE DATOS =================
 conn = sqlite3.connect("auditoria.db", check_same_thread=False)
 cursor = conn.cursor()
@@ -51,7 +55,6 @@ def extraer_datos(texto):
 
     for i, linea in enumerate(lineas):
 
-        # 🔹 INSTITUCIÓN (línea debajo)
         if re.search(r'\bINSTITUCI[ÓO]N\b', linea, re.IGNORECASE):
             if i + 1 < len(lineas):
                 institucion_final = lineas[i+1]
@@ -60,22 +63,18 @@ def extraer_datos(texto):
             if institucion_final == "No encontrado":
                 institucion_final = linea
 
-    # ESTRUCTURA
     est_match = re.search(r'\b\d{12}\b', texto)
     if est_match:
         estructura_final = est_match.group(0)
 
-    # LIBRAMIENTO
     lib_match = re.search(r'(?:LIBRAMIENTO|NÚMERO|NO\.|Nº)\s*[:#-]?\s*(\b\d{1,10}\b)', texto, re.IGNORECASE)
     if lib_match:
         libramiento_final = lib_match.group(1)
 
-    # IMPORTE
     imp_match = re.search(r'RD\$?\s?[\d,]+\.\d{2}', texto)
     if imp_match:
         importe_final = imp_match.group(0)
 
-    # 🔴 DETECTOR CLAVE
     if "SERVICIOS BASICOS" in texto.upper() or "SERVICIO BASICO" in texto.upper():
         clasificacion = "SERVICIOS BASICOS"
 
@@ -87,32 +86,42 @@ def extraer_datos(texto):
         "clasificacion": clasificacion
     }
 
-# ================= ENTRADA =================
-texto_pegado = st.text_area("📥 Pegue el texto aquí", key="input_auditoria")
+# ================= ENTRADA CONTROLADA =================
+texto_pegado = st.text_area(
+    "📥 Pegue el texto aquí",
+    value=st.session_state.texto_input
+)
 
-if texto_pegado:
-    nuevo_registro = extraer_datos(texto_pegado)
+if st.button("📤 Enviar al Historial"):
 
-    cursor.execute("""
-        INSERT INTO registros (institucion, estructura_programatica, numero_libramiento, importe, clasificacion) 
-        VALUES (?, ?, ?, ?, ?)
-    """, (
-        nuevo_registro["institucion"],
-        nuevo_registro["estructura_programatica"],
-        nuevo_registro["numero_libramiento"],
-        nuevo_registro["importe"],
-        nuevo_registro["clasificacion"]
-    ))
-    conn.commit()
-
-    # 🔔 ALERTA 3 SEGUNDOS
-    if nuevo_registro["clasificacion"] == "SERVICIOS BASICOS":
-        alerta = st.empty()
-        alerta.success("🚀 BIENES Y SERVICIOS")
-        time.sleep(3)
-        alerta.empty()
+    if texto_pegado.strip() == "":
+        st.warning("Pegue información antes de enviar.")
     else:
-        st.toast("✅ Registro procesado")
+        nuevo_registro = extraer_datos(texto_pegado)
+
+        cursor.execute("""
+            INSERT INTO registros (institucion, estructura_programatica, numero_libramiento, importe, clasificacion) 
+            VALUES (?, ?, ?, ?, ?)
+        """, (
+            nuevo_registro["institucion"],
+            nuevo_registro["estructura_programatica"],
+            nuevo_registro["numero_libramiento"],
+            nuevo_registro["importe"],
+            nuevo_registro["clasificacion"]
+        ))
+        conn.commit()
+
+        st.session_state.texto_input = ""
+
+        if nuevo_registro["clasificacion"] == "SERVICIOS BASICOS":
+            alerta = st.empty()
+            alerta.success("🚀 BIENES Y SERVICIOS")
+            time.sleep(3)
+            alerta.empty()
+        else:
+            st.success("✅ Registro enviado al historial")
+
+        st.rerun()
 
 # ================= HISTORIAL =================
 st.markdown("---")
@@ -124,7 +133,7 @@ if not df_historial.empty:
     if not historial_editado.equals(df_historial):
         historial_editado.to_sql("registros", conn, if_exists="replace", index=False)
 
-# 🔵 ACTIVADOR DEL INDICADOR EN USO
+# 🔵 INDICADOR EN USO
 es_sb = False
 if not df_historial.empty:
     es_sb = df_historial.iloc[0]["clasificacion"] == "SERVICIOS BASICOS"
