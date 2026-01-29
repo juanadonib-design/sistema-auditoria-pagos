@@ -35,9 +35,10 @@ def extraer_datos(texto):
 
     for i, linea in enumerate(lineas):
         # BUSCAR INSTITUCIÓN: Si la línea contiene la palabra, tomamos la de abajo
-        if re.search(r'\bINSTITUCION\b', linea, re.IGNORECASE):
-            if i + 1 < len(lineas):
-                institucion_final = lineas[i+1]
+        if re.search(r'\bINSTITUCI[ÓO]N\b', linea, re.IGNORECASE):
+    if i + 1 < len(lineas):
+        institucion_final = lineas[i+1]
+
         
         # Si no dice "Institución" pero es un nombre conocido (ej. INABIE)
         elif re.search(r'\b(MINISTERIO|INABIE|DIRECCION|ALCALDIA|AYUNTAMIENTO)\b', linea, re.IGNORECASE):
@@ -117,3 +118,4 @@ if not df_historial.empty:
 crear_formulario("Bienes y Servicios", ["CC", "CP", "OFI", "FACT", "FIRMA DIGITAL", "Recep", "RPE", "DGII", "TSS", "OC", "CONT", "TITULO", "DETE", "JURI INMO", "TASACIÓN", "APROB. PRESI", "VIAJE PRESI"], "f_b", resaltar=es_sb)
 crear_formulario("Transferencias", ["OFI", "FIRMA DIGITAL", "PRES", "OFIC", "BENE", "NÓMINA", "CARTA RUTA", "RNC", "MERCADO VA", "DECRETO", "CONGRESO", "DIR. FIDE", "CONTR. FIDU", "DEUDA EXT", "ANTICIPO"], "f_t")
 crear_formulario("Obras", ["CC", "CP", "OFI", "FIRMA DIGITAL", "FACT", "Recep", "RPE", "DGII", "TSS", "OC", "CONT", "EVATEC", "CU", "SUP", "Cierre de Obra", "20%", "AVA", "FIEL"], "f_o")
+
