@@ -7,7 +7,6 @@ import time
 st.set_page_config(page_title="Sistema Auditoría de Pagos", layout="wide")
 st.title("🧾 Sistema de Apoyo a la Auditoría de Pagos")
 
-# 🔵 CSS CÍRCULO EN USO
 st.markdown("""
 <style>
 .badge-en-uso {
@@ -24,13 +23,13 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# ================= CONTROL ANTI DUPLICADO =================
 if "texto_input" not in st.session_state:
     st.session_state.texto_input = ""
 
 # ================= BASE DE DATOS =================
 conn = sqlite3.connect("auditoria.db", check_same_thread=False)
 cursor = conn.cursor()
+
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS registros (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -41,12 +40,24 @@ CREATE TABLE IF NOT EXISTS registros (
     clasificacion TEXT
 )
 """)
+
+# 🔹 TABLA FORMULARIO BIENES Y SERVICIOS RELACIONADA
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS formularios_bs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    registro_id INTEGER UNIQUE,
+    CC TEXT, CP TEXT, OFI TEXT, FACT TEXT, FIRMA_DIGITAL TEXT,
+    Recep TEXT, RPE TEXT, DGII TEXT, TSS TEXT, OC TEXT, CONT TEXT,
+    TITULO TEXT, DETE TEXT, JURI_INMO TEXT, TASACION TEXT,
+    APROB_PRESI TEXT, VIAJE_PRESI TEXT,
+    FOREIGN KEY(registro_id) REFERENCES registros(id)
+)
+""")
 conn.commit()
 
 # ================= EXTRACCIÓN =================
 def extraer_datos(texto):
     lineas = [l.strip() for l in texto.split('\n') if l.strip()]
-    
     institucion_final = "No encontrado"
     estructura_final = "No encontrado"
     libramiento_final = "No encontrado"
@@ -54,11 +65,9 @@ def extraer_datos(texto):
     clasificacion = "General"
 
     for i, linea in enumerate(lineas):
-
         if re.search(r'\bINSTITUCI[ÓO]N\b', linea, re.IGNORECASE):
             if i + 1 < len(lineas):
                 institucion_final = lineas[i+1]
-
         elif re.search(r'\b(MINISTERIO|INABIE|DIRECCION|ALCALDIA|AYUNTAMIENTO)\b', linea, re.IGNORECASE):
             if institucion_final == "No encontrado":
                 institucion_final = linea
@@ -75,7 +84,7 @@ def extraer_datos(texto):
     if imp_match:
         importe_final = imp_match.group(0)
 
-    if "SERVICIOS BASICOS" in texto.upper() or "SERVICIO BASICO" in texto.upper():
+    if "SERVICIOS BASICOS" in texto.upper():
         clasificacion = "SERVICIOS BASICOS"
 
     return {
@@ -86,41 +95,21 @@ def extraer_datos(texto):
         "clasificacion": clasificacion
     }
 
-# ================= ENTRADA CONTROLADA =================
-texto_pegado = st.text_area(
-    "📥 Pegue el texto aquí",
-    value=st.session_state.texto_input
-)
+# ================= ENTRADA =================
+texto_pegado = st.text_area("📥 Pegue el texto aquí", value=st.session_state.texto_input)
 
 if st.button("📤 Enviar al Historial"):
-
-    if texto_pegado.strip() == "":
-        st.warning("Pegue información antes de enviar.")
-    else:
+    if texto_pegado.strip():
         nuevo_registro = extraer_datos(texto_pegado)
 
         cursor.execute("""
-            INSERT INTO registros (institucion, estructura_programatica, numero_libramiento, importe, clasificacion) 
-            VALUES (?, ?, ?, ?, ?)
-        """, (
-            nuevo_registro["institucion"],
-            nuevo_registro["estructura_programatica"],
-            nuevo_registro["numero_libramiento"],
-            nuevo_registro["importe"],
-            nuevo_registro["clasificacion"]
-        ))
+        INSERT INTO registros (institucion, estructura_programatica, numero_libramiento, importe, clasificacion) 
+        VALUES (?, ?, ?, ?, ?)
+        """, tuple(nuevo_registro.values()))
         conn.commit()
 
         st.session_state.texto_input = ""
-
-        if nuevo_registro["clasificacion"] == "SERVICIOS BASICOS":
-            alerta = st.empty()
-            alerta.success("🚀 BIENES Y SERVICIOS")
-            time.sleep(3)
-            alerta.empty()
-        else:
-            st.success("✅ Registro enviado al historial")
-
+        st.success("Registro guardado")
         st.rerun()
 
 # ================= HISTORIAL =================
@@ -129,41 +118,57 @@ st.subheader("📊 Historial")
 df_historial = pd.read_sql_query("SELECT * FROM registros ORDER BY id DESC", conn)
 
 if not df_historial.empty:
-    historial_editado = st.data_editor(df_historial, hide_index=True, use_container_width=True)
-    if not historial_editado.equals(df_historial):
-        historial_editado.to_sql("registros", conn, if_exists="replace", index=False)
+    st.dataframe(df_historial, use_container_width=True)
 
-# 🔵 INDICADOR EN USO
-es_sb = False
+# ================= SELECCIONAR EXPEDIENTE =================
+registro_sel = None
 if not df_historial.empty:
-    es_sb = df_historial.iloc[0]["clasificacion"] == "SERVICIOS BASICOS"
+    registro_sel = st.selectbox(
+        "📌 Seleccione expediente",
+        df_historial["id"],
+        format_func=lambda x: f"#{x} — {df_historial[df_historial.id==x]['institucion'].values[0]}"
+    )
 
-# ================= FORMULARIOS =================
-def crear_formulario(titulo, columnas, clave, en_uso=False):
-    if en_uso:
-        st.markdown(f'### 📋 {titulo} <span class="badge-en-uso">En uso</span>', unsafe_allow_html=True)
-    else:
-        st.markdown(f'### 📋 {titulo}', unsafe_allow_html=True)
+# ================= FORMULARIO BIENES Y SERVICIOS =================
+columnas_bs = ["CC","CP","OFI","FACT","FIRMA DIGITAL","Recep","RPE","DGII","TSS","OC",
+               "CONT","TITULO","DETE","JURI INMO","TASACIÓN","APROB. PRESI","VIAJE PRESI"]
 
-    df = pd.DataFrame([{col: "√" for col in columnas}])
-    config = {col: st.column_config.SelectboxColumn(options=["√", "N/A"], width=65) for col in columnas}
-    st.data_editor(df, column_config=config, use_container_width=False, hide_index=True, key=clave)
+if registro_sel:
+    datos_registro = df_historial[df_historial["id"] == registro_sel].iloc[0]
 
-st.markdown("---")
+    if datos_registro["clasificacion"] == "SERVICIOS BASICOS":
+        st.markdown('### 📋 Bienes y Servicios <span class="badge-en-uso">En uso</span>', unsafe_allow_html=True)
 
-crear_formulario(
-    "Bienes y Servicios",
-    ["CC", "CP", "OFI", "FACT", "FIRMA DIGITAL", "Recep", "RPE", "DGII", "TSS", "OC", "CONT", "TITULO", "DETE", "JURI INMO", "TASACIÓN", "APROB. PRESI", "VIAJE PRESI"],
-    "f_b",
-    en_uso=es_sb
-)
+        df_exist = pd.read_sql_query(
+            f"SELECT * FROM formularios_bs WHERE registro_id={registro_sel}", conn
+        )
 
-crear_formulario("Transferencias",
-    ["OFI", "FIRMA DIGITAL", "PRES", "OFIC", "BENE", "NÓMINA", "CARTA RUTA", "RNC", "MERCADO VA", "DECRETO", "CONGRESO", "DIR. FIDE", "CONTR. FIDU", "DEUDA EXT", "ANTICIPO"],
-    "f_t"
-)
+        if df_exist.empty:
+            df_form = pd.DataFrame([{col: "√" for col in columnas_bs}])
+        else:
+            df_form = df_exist.rename(columns={
+                "FIRMA_DIGITAL":"FIRMA DIGITAL",
+                "JURI_INMO":"JURI INMO",
+                "TASACION":"TASACIÓN",
+                "APROB_PRESI":"APROB. PRESI",
+                "VIAJE_PRESI":"VIAJE PRESI"
+            })[columnas_bs]
 
-crear_formulario("Obras",
-    ["CC", "CP", "OFI", "FIRMA DIGITAL", "FACT", "Recep", "RPE", "DGII", "TSS", "OC", "CONT", "EVATEC", "CU", "SUP", "Cierre de Obra", "20%", "AVA", "FIEL"],
-    "f_o"
-)
+        config = {col: st.column_config.SelectboxColumn(options=["√","N/A"], width=65) for col in columnas_bs}
+        tabla_editable = st.data_editor(df_form, column_config=config, hide_index=True)
+
+        if st.button("💾 Guardar Formulario"):
+            guardar_df = tabla_editable.rename(columns={
+                "FIRMA DIGITAL":"FIRMA_DIGITAL",
+                "JURI INMO":"JURI_INMO",
+                "TASACIÓN":"TASACION",
+                "APROB. PRESI":"APROB_PRESI",
+                "VIAJE PRESI":"VIAJE_PRESI"
+            })
+            guardar_df["registro_id"] = registro_sel
+
+            cursor.execute("DELETE FROM formularios_bs WHERE registro_id=?", (registro_sel,))
+            conn.commit()
+
+            guardar_df.to_sql("formularios_bs", conn, if_exists="append", index=False)
+            st.success("Formulario guardado correctamente")
