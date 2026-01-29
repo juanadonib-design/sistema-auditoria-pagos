@@ -47,24 +47,26 @@ CREATE TABLE IF NOT EXISTS formulario_bienes_servicios (
 )
 """, commit=True)
 
-# ================= LÓGICA DE BORRADO ROBUSTA =================
+# ================= LÓGICA DE BORRADO ROBUSTA (SOLUCIÓN DEFINITIVA) =================
 if "editor_principal" in st.session_state:
     changes = st.session_state["editor_principal"]
     if changes.get("deleted_rows"):
-        # Obtenemos los IDs actuales directamente de la base de datos
+        # Cargamos los IDs actuales de la base de datos para mapear el índice del editor
         res = ejecutar_query("SELECT id FROM registros ORDER BY id DESC")
         if res:
-            df_ids = pd.DataFrame(res, columns=["id"])
+            ids_actuales = [row[0] for row in res]
             indices_a_borrar = changes["deleted_rows"]
             
             for idx in indices_a_borrar:
-                # VALIDACIÓN: Solo intentamos borrar si el índice es válido
-                if idx < len(df_ids):
-                    id_real = df_ids.iloc[idx]["id"]
-                    # Borrado en cascada manual
-                    ejecutar_query("DELETE FROM formulario_bienes_servicios WHERE registro_id = ?", (int(id_real),), commit=True)
-                    ejecutar_query("DELETE FROM registros WHERE id = ?", (int(id_real),), commit=True)
+                if idx < len(ids_actuales):
+                    id_real = ids_actuales[idx]
+                    # Borramos con validación de tipo
+                    if id_real is not None:
+                        ejecutar_query("DELETE FROM formulario_bienes_servicios WHERE registro_id = ?", (int(id_real),), commit=True)
+                        ejecutar_query("DELETE FROM registros WHERE id = ?", (int(id_real),), commit=True)
             
+            # Limpiamos el estado para evitar que el bucle se repita al recargar
+            st.session_state["editor_principal"]["deleted_rows"] = []
             st.toast("🗑️ Registro eliminado correctamente")
             time.sleep(0.5)
             st.rerun()
@@ -120,6 +122,7 @@ if not df_h.empty:
 
 # ================= FORMULARIOS =================
 def crear_formulario_bienes_servicios(reg_id, en_uso=False):
+    # Verificamos si el registro sigue existiendo antes de renderizar
     check = ejecutar_query("SELECT id FROM registros WHERE id = ?", (reg_id,))
     if not check:
         return
