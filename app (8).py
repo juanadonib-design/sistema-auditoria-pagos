@@ -2,19 +2,25 @@ import streamlit as st
 import pandas as pd
 import re
 import sqlite3
+import time
 
 # Configuración de página
 st.set_page_config(page_title="Sistema Auditoría de Pagos", layout="wide")
 st.title("🧾 Sistema de Apoyo a la Auditoría de Pagos")
 
-# CSS personalizado para el marco verde
+# CSS para el indicador "En uso" circular
 st.markdown("""
     <style>
-    .resaltado-verde {
-        border: 3px solid #28a745;
-        border-radius: 10px;
-        padding: 15px;
-        background-color: #f8fff9;
+    .badge-en-uso {
+        display: inline-block;
+        background-color: #28a745;
+        color: white;
+        padding: 2px 12px;
+        border-radius: 20px;
+        font-size: 14px;
+        font-weight: bold;
+        margin-left: 15px;
+        vertical-align: middle;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -71,7 +77,14 @@ if texto_pegado:
     cursor.execute("INSERT INTO registros (institucion, estructura_programatica, numero_libramiento, importe, clasificacion) VALUES (?, ?, ?, ?, ?)", 
                    (nuevo_registro["institucion"], nuevo_registro["estructura_programatica"], nuevo_registro["numero_libramiento"], nuevo_registro["importe"], nuevo_registro["clasificacion"]))
     conn.commit()
-    st.toast("✅ Registro procesado")
+    
+    # ALERTA DE 3 SEGUNDOS
+    if nuevo_registro["clasificacion"] == "SERVICIOS BASICOS":
+        alerta = st.success("🚀 CLASIFICACIÓN DETECTADA: BIENES Y SERVICIOS")
+        time.sleep(3)
+        alerta.empty() # Elimina la alerta después de los 3 segundos
+    else:
+        st.toast("✅ Registro procesado")
 
 # ================= HISTORIAL =================
 st.markdown("---")
@@ -84,32 +97,27 @@ if not df_historial.empty:
         historial_editado.to_sql("registros", conn, if_exists="replace", index=False)
         st.toast("💾 Cambios guardados")
 
-# ================= FORMULARIOS CON RELACIÓN =================
-def crear_formulario(titulo, columnas, clave, resaltar=False):
-    # Si resaltar es True, envolvemos en el div con la clase CSS de borde verde
-    if resaltar:
-        st.markdown(f'<div class="resaltado-verde">', unsafe_allow_html=True)
-        st.subheader(f"📋 {titulo}")
+# ================= FORMULARIOS =================
+def crear_formulario(titulo, columnas, clave, en_uso=False):
+    # Título con indicador circular si está en uso
+    if en_uso:
+        st.markdown(f'### 📋 {titulo} <span class="badge-en-uso">En uso</span>', unsafe_allow_html=True)
     else:
-        st.subheader(f"📋 {titulo}")
+        st.markdown(f'### 📋 {titulo}', unsafe_allow_html=True)
     
     df = pd.DataFrame([{col: "√" for col in columnas}])
     config = {col: st.column_config.SelectboxColumn(options=["√", "N/A"], width=65) for col in columnas}
-    
     st.data_editor(df, column_config=config, use_container_width=False, hide_index=True, key=clave)
-    
-    if resaltar:
-        st.markdown('</div>', unsafe_allow_html=True)
 
-# Lógica de relación para Servicios Básicos
+# Determinar estado
 es_sb = False
 if not df_historial.empty:
     es_sb = df_historial.iloc[0]["clasificacion"] == "SERVICIOS BASICOS"
 
 st.markdown("---")
-# Formulario 1: Bienes y Servicios (Resalta en verde si es SB)
-crear_formulario("Bienes y Servicios", ["CC", "CP", "OFI", "FACT", "FIRMA DIGITAL", "Recep", "RPE", "DGII", "TSS", "OC", "CONT", "TITULO", "DETE", "JURI INMO", "TASACIÓN", "APROB. PRESI", "VIAJE PRESI"], "f_b", resaltar=es_sb)
+# Formulario Bienes y Servicios con el indicador dinámico
+crear_formulario("Bienes y Servicios", ["CC", "CP", "OFI", "FACT", "FIRMA DIGITAL", "Recep", "RPE", "DGII", "TSS", "OC", "CONT", "TITULO", "DETE", "JURI INMO", "TASACIÓN", "APROB. PRESI", "VIAJE PRESI"], "f_b", en_uso=es_sb)
 
-# Formulario 2 y 3 (Sin resaltar)
 crear_formulario("Transferencias", ["OFI", "FIRMA DIGITAL", "PRES", "OFIC", "BENE", "NÓMINA", "CARTA RUTA", "RNC", "MERCADO VA", "DECRETO", "CONGRESO", "DIR. FIDE", "CONTR. FIDU", "DEUDA EXT", "ANTICIPO"], "f_t")
+
 crear_formulario("Obras", ["CC", "CP", "OFI", "FIRMA DIGITAL", "FACT", "Recep", "RPE", "DGII", "TSS", "OC", "CONT", "EVATEC", "CU", "SUP", "Cierre de Obra", "20%", "AVA", "FIEL"], "f_o")
