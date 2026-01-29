@@ -26,46 +26,53 @@ if "clasificacion" not in columnas:
     cursor.execute("ALTER TABLE registros ADD COLUMN clasificacion TEXT DEFAULT 'General'")
     conn.commit()
 
-# ================= EXTRACCIÓN Y CLASIFICACIÓN MEJORADA =================
+# ================= EXTRACCIÓN MEJORADA (SALTOS DE LÍNEA) =================
 def extraer_datos(texto):
-    # Limpiamos el texto de espacios extraños al inicio
-    texto_clean = texto.strip()
-    lineas = texto_clean.split('\n')
-
-    # 1. INSTITUCIÓN: Intento con palabras clave primero
-    institucion_match = re.search(r'(INSTITUTO|MINISTERIO|DIRECCIÓN|AYUNTAMIENTO|UNIVERSIDAD|CONSEJO|TESORERÍA|CONTRALORÍA|ESTADO|PRESIDENCIA|ALCALDÍA)\b.*', texto, re.IGNORECASE)
+    lineas = [l.strip() for l in texto.split('\n') if l.strip()]
     
     institucion_final = "No encontrado"
-    if institucion_match:
-        institucion_final = institucion_match.group(0).strip()
-    elif len(lineas) > 0:
-        # Si no hay palabra clave, tomamos la primera línea con texto (suele ser el encabezado)
-        for linea in lineas:
-            if len(linea.strip()) > 5: # Evitamos líneas vacías o muy cortas
-                institucion_final = linea.strip()
-                break
-    
-    # 2. ESTRUCTURA: 12 dígitos
-    estructura_match = re.search(r'\b\d{12}\b', texto)
-    
-    # 3. LIBRAMIENTO: Tu versión que ya funciona
-    libramiento_match = re.search(r'(?:LIBRAMIENTO|NÚMERO|NO\.|Nº)\s*[:#-]?\s*(\b\d{1,10}\b)', texto, re.IGNORECASE)
-    if not libramiento_match:
-        libramiento_match = re.search(r'\b\d{1,6}\b', texto)
-
-    # 4. IMPORTE
-    importe_match = re.search(r'RD\$?\s?[\d,]+\.\d{2}', texto)
-    
-    # CLASIFICACIÓN SERVICIOS BASICOS
+    estructura_final = "No encontrado"
+    libramiento_final = "No encontrado"
+    importe_final = "No encontrado"
     clasificacion = "General"
+
+    # 1. BÚSQUEDA DE INSTITUCIÓN (Detecta INABIE en línea siguiente)
+    for i, linea in enumerate(lineas):
+        # Busca palabras clave de encabezado
+        if re.search(r'INSTITUCION|MINISTERIO|DIRECCION|AYUNTAMIENTO|UNIVERSIDAD|INABIE', linea, re.IGNORECASE):
+            # Si la línea solo dice "Institucion" o similar, toma la siguiente
+            if len(linea) < 15 and i + 1 < len(lineas):
+                institucion_final = lineas[i+1]
+            else:
+                institucion_final = linea
+            break
+
+    # 2. BÚSQUEDA DE ESTRUCTURA (12 dígitos)
+    est_match = re.search(r'\b\d{12}\b', texto)
+    if est_match: estructura_final = est_match.group(0)
+
+    # 3. BÚSQUEDA DE LIBRAMIENTO (Usa tu lógica probada)
+    lib_match = re.search(r'(?:LIBRAMIENTO|NÚMERO|NO\.|Nº)\s*[:#-]?\s*(\b\d{1,10}\b)', texto, re.IGNORECASE)
+    if lib_match: 
+        libramiento_final = lib_match.group(1) if lib_match.groups() else lib_match.group(0)
+    else:
+        # Búsqueda secundaria de número corto
+        sec_lib = re.search(r'\b\d{1,6}\b', texto)
+        if sec_lib: libramiento_final = sec_lib.group(0)
+
+    # 4. BÚSQUEDA DE IMPORTE
+    imp_match = re.search(r'RD\$?\s?[\d,]+\.\d{2}', texto)
+    if imp_match: importe_final = imp_match.group(0)
+
+    # 5. CLASIFICACIÓN SERVICIOS BASICOS
     if "SERVICIOS BASICOS" in texto.upper():
         clasificacion = "SERVICIOS BASICOS"
 
     return {
         "institucion": institucion_final,
-        "estructura_programatica": estructura_match.group(0) if estructura_match else "No encontrado",
-        "numero_libramiento": libramiento_match.group(1) if (libramiento_match and len(libramiento_match.groups()) > 0) else (libramiento_match.group(0) if libramiento_match else "No encontrado"),
-        "importe": importe_match.group(0) if importe_match else "No encontrado",
+        "estructura_programatica": estructura_final,
+        "numero_libramiento": libramiento_final,
+        "importe": importe_final,
         "clasificacion": clasificacion
     }
 
@@ -87,7 +94,7 @@ if texto_pegado:
     
     st.toast(f"✅ Registro guardado", icon="🚀")
 
-# ================= HISTORIAL EDITABLE (AUTOGUARDADO) =================
+# ================= HISTORIAL EDITABLE =================
 st.markdown("---")
 st.subheader("📊 Historial Editable (Autoguardado)")
 
@@ -116,13 +123,7 @@ def crear_formulario_auditoria(titulo, columnas, clave_storage, resaltar=False):
         st.markdown(f"### 📋 {titulo}")
     
     df_init = pd.DataFrame([{col: "√" for col in columnas}])
-    
-    config = {
-        col: st.column_config.SelectboxColumn(
-            label=col, options=["√", "N/A"], width=65, required=True
-        ) for col in columnas
-    }
-
+    config = {col: st.column_config.SelectboxColumn(label=col, options=["√", "N/A"], width=65, required=True) for col in columnas}
     st.data_editor(df_init, column_config=config, use_container_width=False, hide_index=True, key=clave_storage)
 
 es_servicios_basicos = False
