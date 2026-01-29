@@ -25,7 +25,10 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ================= BASE DE DATOS =================
-conn = sqlite3.connect("auditoria.db", check_same_thread=False)
+def get_connection():
+    return sqlite3.connect("auditoria.db", check_same_thread=False)
+
+conn = get_connection()
 cursor = conn.cursor()
 
 cursor.execute("""
@@ -97,41 +100,44 @@ if st.button("📤 Enviar al Historial"):
 
         if nuevo_registro["clasificacion"] == "SERVICIOS BASICOS":
             alerta = st.success("🚀 BIENES Y SERVICIOS")
-            time.sleep(3)
+            time.sleep(2)
             alerta.empty()
         st.rerun()
 
-# ================= HISTORIAL CON PAPELERA NATIVA =================
+# ================= HISTORIAL CON PAPELERA NATIVA CORREGIDA =================
 st.markdown("---")
 st.subheader("📊 Historial")
 
+# Cargar datos frescos de la DB
 df_historial = pd.read_sql_query("SELECT * FROM registros ORDER BY id DESC", conn)
 
 if not df_historial.empty:
-    # 🗑️ Al usar num_rows="dynamic", Streamlit habilita la papelera automáticamente
-    # al seleccionar filas en el lado izquierdo.
+    # Mostramos el editor
     df_editado = st.data_editor(
         df_historial, 
         use_container_width=True, 
         hide_index=True, 
         num_rows="dynamic",
-        key="historial_editor_nacional"
+        key="editor_principal"
     )
 
-    # Lógica para detectar si se borró algo y sincronizar con la DB
+    # LÓGICA DE BORRADO: Comparamos lo que hay en el editor vs lo que hay en la DB
     if len(df_editado) < len(df_historial):
-        # Identificamos qué IDs ya no están en el DataFrame editado
-        ids_actuales = df_editado["id"].tolist()
-        ids_anteriores = df_historial["id"].tolist()
-        ids_a_borrar = [x for x in ids_anteriores if x not in ids_actuales]
+        ids_vivos = df_editado["id"].tolist()
+        ids_en_db = df_historial["id"].tolist()
+        # Encontrar los IDs que el usuario marcó para borrar
+        ids_para_eliminar = [id_db for id_db in ids_en_db if id_db not in ids_vivos]
         
-        for id_borrar in ids_a_borrar:
+        for id_borrar in ids_para_eliminar:
+            # Eliminar de ambas tablas para mantener integridad
             cursor.execute("DELETE FROM formulario_bienes_servicios WHERE registro_id = ?", (id_borrar,))
             cursor.execute("DELETE FROM registros WHERE id = ?", (id_borrar,))
         
         conn.commit()
-        st.toast("🗑️ Registros eliminados correctamente")
-        time.sleep(1)
+        # Limpiar el estado del editor para que no intente borrar lo mismo otra vez
+        st.session_state["editor_principal"]["deleted_rows"] = []
+        st.toast("🗑️ Registro eliminado permanentemente")
+        time.sleep(0.5)
         st.rerun()
 else:
     st.info("No hay registros en el historial.")
@@ -147,7 +153,8 @@ if not df_historial.empty:
     registro_sel = st.selectbox(
         "📌 Seleccione expediente para trabajar el formulario:",
         df_historial["id"].tolist(),
-        format_func=formato_seguro
+        format_func=formato_seguro,
+        key="selector_expediente"
     )
 
 # ================= FORMULARIOS =================
@@ -160,22 +167,33 @@ def crear_formulario_bienes_servicios(registro_id, en_uso=False):
         st.markdown("### 📋 Bienes y Servicios")
 
     df_guardado = pd.read_sql_query(f"SELECT * FROM formulario_bienes_servicios WHERE registro_id={registro_id}", conn)
-    df = df_guardado[columnas] if not df_guardado.empty else pd.DataFrame([{col:"√" for col in columnas}])
+    
+    if not df_guardado.empty:
+        # Aseguramos que solo tomamos las columnas del formulario
+        df_mostrar = df_guardado[columnas]
+    else:
+        df_mostrar = pd.DataFrame([{col:"√" for col in columnas}])
 
     config = {col: st.column_config.SelectboxColumn(options=["√","N/A"], width=65) for col in columnas}
-    df_editado = st.data_editor(df, column_config=config, hide_index=True, key=f"editor_{registro_id}")
+    
+    # Usamos una key única por ID para que no se mezclen al cambiar de selección
+    df_editado = st.data_editor(df_mostrar, column_config=config, hide_index=True, key=f"form_editor_{registro_id}")
 
-    if st.button("💾 Guardar Cambios en Formulario"):
+    if st.button("💾 Guardar Cambios en Formulario", key=f"btn_save_{registro_id}"):
         datos = df_editado.iloc[0].to_dict()
         cursor.execute("""
             INSERT INTO formulario_bienes_servicios
             (registro_id, CC, CP, OFI, FACT, FIRMA_DIGITAL, Recep, RPE, DGII, TSS, OC, CONT, TITULO, DETE, JURI_INMO, TASACION, APROB_PRESI, VIAJE_PRESI)
             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             ON CONFLICT(registro_id) DO UPDATE SET
-            CC=excluded.CC, CP=excluded.CP, OFI=excluded.OFI, FACT=excluded.FACT, FIRMA_DIGITAL=excluded.FIRMA_DIGITAL, Recep=excluded.Recep, RPE=excluded.RPE, DGII=excluded.DGII, TSS=excluded.TSS, OC=excluded.OC, CONT=excluded.CONT, TITULO=excluded.TITULO, DETE=excluded.DETE, JURI_INMO=excluded.JURI_INMO, TASACION=excluded.TASACION, APROB_PRESI=excluded.APROB_PRESI, VIAJE_PRESI=excluded.VIAJE_PRESI
+            CC=excluded.CC, CP=excluded.CP, OFI=excluded.OFI, FACT=excluded.FACT,
+            FIRMA_DIGITAL=excluded.FIRMA_DIGITAL, Recep=excluded.Recep, RPE=excluded.RPE,
+            DGII=excluded.DGII, TSS=excluded.TSS, OC=excluded.OC, CONT=excluded.CONT,
+            TITULO=excluded.TITULO, DETE=excluded.DETE, JURI_INMO=excluded.JURI_INMO,
+            TASACION=excluded.TASACION, APROB_PRESI=excluded.APROB_PRESI, VIAJE_PRESI=excluded.VIAJE_PRESI
         """, (registro_id, *datos.values()))
         conn.commit()
-        st.success(f"✅ Guardado en #{registro_id}")
+        st.success(f"✅ Formulario guardado para el expediente #{registro_id}")
 
 def crear_formulario_generico(titulo, columnas, clave):
     st.markdown(f"### 📋 {titulo}")
@@ -183,6 +201,7 @@ def crear_formulario_generico(titulo, columnas, clave):
     config = {col: st.column_config.SelectboxColumn(options=["√", "N/A"], width=65) for col in columnas}
     st.data_editor(df, column_config=config, hide_index=True, key=clave)
 
+# Ejecución de formularios
 if registro_sel:
     fila_sel = df_historial[df_historial["id"] == registro_sel]
     es_sb = fila_sel.iloc[0]["clasificacion"] == "SERVICIOS BASICOS" if not fila_sel.empty else False
