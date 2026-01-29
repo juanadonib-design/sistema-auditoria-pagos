@@ -4,11 +4,10 @@ import re
 import sqlite3
 import time
 
-# 1. CONFIGURACIÓN INICIAL
+# 1. CONFIGURACIÓN E INDICADOR CSS
 st.set_page_config(page_title="Sistema Auditoría de Pagos", layout="wide")
 st.title("🧾 Sistema de Apoyo a la Auditoría de Pagos")
 
-# 2. CSS PARA EL INDICADOR
 st.markdown("""
     <style>
     .badge-en-uso {
@@ -25,7 +24,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# 3. FUNCIONES DE BASE DE DATOS
+# 2. FUNCIONES DE BASE DE DATOS
 def ejecutar_query(query, params=(), commit=False):
     with sqlite3.connect("auditoria.db", check_same_thread=False) as conn:
         cursor = conn.cursor()
@@ -47,29 +46,27 @@ CREATE TABLE IF NOT EXISTS formulario_bienes_servicios (
 )
 """, commit=True)
 
-# 4. LÓGICA DE BORRADO (ESTO DEBE IR AQUÍ, ANTES DE MOSTRAR EL HISTORIAL)
+# 3. LÓGICA DE BORRADO (CORREGIDA)
 if "editor_historial" in st.session_state:
     state = st.session_state["editor_historial"]
     if state.get("deleted_rows"):
-        # Obtenemos los IDs actuales para saber cuáles corresponden a los índices borrados
-        res = ejecutar_query("SELECT id FROM registros ORDER BY id DESC")
-        if res:
-            ids_actuales = [row[0] for row in res]
+        # Leemos los datos actuales ANTES de borrar para mapear el índice
+        datos_actuales = ejecutar_query("SELECT id FROM registros ORDER BY id DESC")
+        if datos_actuales:
             indices_a_borrar = state["deleted_rows"]
-            
             for idx in indices_a_borrar:
-                if idx < len(ids_actuales):
-                    id_to_del = ids_actuales[idx]
-                    ejecutar_query("DELETE FROM formulario_bienes_servicios WHERE registro_id = ?", (id_to_del,), commit=True)
-                    ejecutar_query("DELETE FROM registros WHERE id = ?", (id_to_del,), commit=True)
+                if idx < len(datos_actuales):
+                    id_real = datos_actuales[idx][0]
+                    ejecutar_query("DELETE FROM formulario_bienes_servicios WHERE registro_id = ?", (id_real,), commit=True)
+                    ejecutar_query("DELETE FROM registros WHERE id = ?", (id_real,), commit=True)
             
-            # Limpiamos el estado para evitar bucles
-            st.session_state["editor_historial"]["deleted_rows"] = []
-            st.toast("🗑️ Registro eliminado correctamente")
+            # 🟢 CLAVE DE LA SOLUCIÓN: Cambiamos el timestamp para forzar el refresco de la UI
+            st.session_state["historial_version"] = time.time()
+            st.toast("🗑️ Registro eliminado permanentemente")
             time.sleep(0.5)
             st.rerun()
 
-# 5. FUNCIONES DE EXTRACCIÓN
+# 4. EXTRACCIÓN Y ENTRADA
 def extraer_datos(texto):
     lineas = [l.strip() for l in texto.split('\n') if l.strip()]
     inst, est, lib, imp, clas = "No encontrado", "No encontrado", "No encontrado", "No encontrado", "General"
@@ -87,28 +84,38 @@ def extraer_datos(texto):
     if "SERVICIOS BASICOS" in texto.upper() or "SERVICIO BASICO" in texto.upper(): clas = "SERVICIOS BASICOS"
     return {"institucion": inst, "estructura": est, "libramiento": lib, "importe": imp, "clasificacion": clas}
 
-# 6. ENTRADA DE DATOS
 texto_pegado = st.text_area("📥 Pegue el texto aquí")
 if st.button("📤 Enviar al Historial"):
     if texto_pegado.strip():
         d = extraer_datos(texto_pegado)
         ejecutar_query("INSERT INTO registros (institucion, estructura_programatica, numero_libramiento, importe, clasificacion) VALUES (?, ?, ?, ?, ?)", 
                        (d["institucion"], d["estructura"], d["libramiento"], d["importe"], d["clasificacion"]), commit=True)
+        st.session_state["historial_version"] = time.time() # Actualizar versión al insertar
         st.rerun()
 
-# 7. RENDERIZAR HISTORIAL (LEERÁ LOS DATOS YA LIMPIOS)
+# 5. RENDERIZAR HISTORIAL CON VERSIÓN DINÁMICA
 st.markdown("---")
 st.subheader("📊 Historial")
 datos_h = ejecutar_query("SELECT * FROM registros ORDER BY id DESC")
 df_h = pd.DataFrame(datos_h, columns=["id", "institucion", "estructura_programatica", "numero_libramiento", "importe", "clasificacion"])
 
 if not df_h.empty:
-    # Mostramos el editor dinámico
-    st.data_editor(df_h, use_container_width=True, hide_index=True, num_rows="dynamic", key="editor_historial")
+    # 🟢 USAMOS UNA KEY DINÁMICA: Cada vez que borras, historial_version cambia
+    # y Streamlit se ve obligado a renderizar desde cero, olvidando el cache anterior.
+    if "historial_version" not in st.session_state:
+        st.session_state["historial_version"] = time.time()
+    
+    st.data_editor(
+        df_h, 
+        use_container_width=True, 
+        hide_index=True, 
+        num_rows="dynamic", 
+        key=f"editor_historial_{st.session_state['historial_version']}"
+    )
 else:
     st.info("No hay registros en el historial.")
 
-# 8. SELECTOR Y FORMULARIOS
+# 6. SELECTOR Y FORMULARIO (Se mantiene igual)
 st.markdown("---")
 if not df_h.empty:
     opciones = df_h["id"].tolist()
@@ -119,9 +126,7 @@ if not df_h.empty:
     )
 
     if registro_sel:
-        # Cargar formulario de Bienes y Servicios
         col_form = ["CC","CP","OFI","FACT","FIRMA_DIGITAL","Recep","RPE","DGII","TSS","OC","CONT","TITULO","DETE","JURI_INMO","TASACION","APROB_PRESI","VIAJE_PRESI"]
-        
         fila_sel = df_h[df_h["id"]==registro_sel]
         es_sb = fila_sel["clasificacion"].values[0] == "SERVICIOS BASICOS"
 
@@ -143,8 +148,3 @@ if not df_h.empty:
                 ON CONFLICT(registro_id) DO UPDATE SET CC=excluded.CC, CP=excluded.CP, OFI=excluded.OFI, FACT=excluded.FACT, FIRMA_DIGITAL=excluded.FIRMA_DIGITAL, Recep=excluded.Recep, RPE=excluded.RPE, DGII=excluded.DGII, TSS=excluded.TSS, OC=excluded.OC, CONT=excluded.CONT, TITULO=excluded.TITULO, DETE=excluded.DETE, JURI_INMO=excluded.JURI_INMO, TASACION=excluded.TASACION, APROB_PRESI=excluded.APROB_PRESI, VIAJE_PRESI=excluded.VIAJE_PRESI
             """, (registro_sel, *vals), commit=True)
             st.success("Guardado.")
-
-st.subheader("📋 Transferencias")
-st.data_editor(pd.DataFrame([{"OFI":"√"}]), hide_index=True, key="t_static")
-st.subheader("📋 Obras")
-st.data_editor(pd.DataFrame([{"CC":"√"}]), hide_index=True, key="o_static")
