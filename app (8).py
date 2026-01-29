@@ -4,44 +4,39 @@ import re
 import sqlite3
 import time
 
+# Configuración de página
 st.set_page_config(page_title="Sistema Auditoría de Pagos", layout="wide")
 st.title("🧾 Sistema de Apoyo a la Auditoría de Pagos")
 
 # 🔵 CSS CÍRCULO EN USO
 st.markdown("""
-<style>
-.badge-en-uso {
-    display: inline-block;
-    background-color: #28a745;
-    color: white;
-    padding: 4px 15px;
-    border-radius: 50px;
-    font-size: 14px;
-    font-weight: bold;
-    margin-left: 15px;
-    vertical-align: middle;
-}
-</style>
-""", unsafe_allow_html=True)
+    <style>
+    .badge-en-uso {
+        display: inline-block;
+        background-color: #28a745;
+        color: white;
+        padding: 4px 15px;
+        border-radius: 50px;
+        font-size: 14px;
+        font-weight: bold;
+        margin-left: 15px;
+        vertical-align: middle;
+    }
+    </style>
+    """, unsafe_allow_html=True)
 
-# ================= BASE DE DATOS =================
-conn = sqlite3.connect("auditoria.db", check_same_thread=False)
-cursor = conn.cursor()
+# ================= CONEXIÓN Y ESTRUCTURA DE BD =================
+def ejecutar_query(query, params=(), commit=False):
+    with sqlite3.connect("auditoria.db", check_same_thread=False) as conn:
+        cursor = conn.cursor()
+        cursor.execute(query, params)
+        if commit:
+            conn.commit()
+        return cursor.fetchall()
 
-# Tabla de Registros Generales
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS registros (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    institucion TEXT,
-    estructura_programatica TEXT,
-    numero_libramiento TEXT,
-    importe TEXT,
-    clasificacion TEXT
-)
-""")
-
-# 🏗 PASO 1 — Tabla de Formulario Ligada (Relación 1 a 1)
-cursor.execute("""
+# Crear tablas
+ejecutar_query("CREATE TABLE IF NOT EXISTS registros (id INTEGER PRIMARY KEY AUTOINCREMENT, institucion TEXT, estructura_programatica TEXT, numero_libramiento TEXT, importe TEXT, clasificacion TEXT)", commit=True)
+ejecutar_query("""
 CREATE TABLE IF NOT EXISTS formulario_bienes_servicios (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     registro_id INTEGER UNIQUE,
@@ -50,151 +45,112 @@ CREATE TABLE IF NOT EXISTS formulario_bienes_servicios (
     DETE TEXT, JURI_INMO TEXT, TASACION TEXT, APROB_PRESI TEXT, VIAJE_PRESI TEXT,
     FOREIGN KEY(registro_id) REFERENCES registros(id)
 )
-""")
-conn.commit()
+""", commit=True)
+
+# ================= LÓGICA DE BORRADO ROBUSTA =================
+if "editor_principal" in st.session_state:
+    changes = st.session_state["editor_principal"]
+    if changes.get("deleted_rows"):
+        # Obtenemos los IDs actuales directamente de la base de datos
+        res = ejecutar_query("SELECT id FROM registros ORDER BY id DESC")
+        if res:
+            df_ids = pd.DataFrame(res, columns=["id"])
+            indices_a_borrar = changes["deleted_rows"]
+            
+            for idx in indices_a_borrar:
+                # VALIDACIÓN: Solo intentamos borrar si el índice es válido
+                if idx < len(df_ids):
+                    id_real = df_ids.iloc[idx]["id"]
+                    # Borrado en cascada manual
+                    ejecutar_query("DELETE FROM formulario_bienes_servicios WHERE registro_id = ?", (int(id_real),), commit=True)
+                    ejecutar_query("DELETE FROM registros WHERE id = ?", (int(id_real),), commit=True)
+            
+            st.toast("🗑️ Registro eliminado correctamente")
+            time.sleep(0.5)
+            st.rerun()
 
 # ================= EXTRACCIÓN =================
 def extraer_datos(texto):
     lineas = [l.strip() for l in texto.split('\n') if l.strip()]
-    institucion_final, estructura_final, libramiento_final, importe_final, clasificacion = "No encontrado", "No encontrado", "No encontrado", "No encontrado", "General"
-
+    inst, est, lib, imp, clas = "No encontrado", "No encontrado", "No encontrado", "No encontrado", "General"
     for i, linea in enumerate(lineas):
         if re.search(r'\bINSTITUCI[ÓO]N\b', linea, re.IGNORECASE):
-            if i + 1 < len(lineas): institucion_final = lineas[i+1]
+            if i + 1 < len(lineas): inst = lineas[i+1]
         elif re.search(r'\b(MINISTERIO|INABIE|DIRECCION|ALCALDIA|AYUNTAMIENTO)\b', linea, re.IGNORECASE):
-            if institucion_final == "No encontrado": institucion_final = linea
-
-    est_match = re.search(r'\b\d{12}\b', texto)
-    if est_match: estructura_final = est_match.group(0)
-
-    lib_match = re.search(r'(?:LIBRAMIENTO|NÚMERO|NO\.|Nº)\s*[:#-]?\s*(\b\d{1,10}\b)', texto, re.IGNORECASE)
-    if lib_match: libramiento_final = lib_match.group(1)
-    else:
-        sec_lib = re.search(r'\b\d{1,6}\b', texto)
-        if sec_lib: libramiento_final = sec_lib.group(0)
-
-    imp_match = re.search(r'RD\$?\s?[\d,]+\.\d{2}', texto)
-    if imp_match: importe_final = imp_match.group(0)
-
-    if "SERVICIOS BASICOS" in texto.upper() or "SERVICIO BASICO" in texto.upper():
-        clasificacion = "SERVICIOS BASICOS"
-
-    return {
-        "institucion": institucion_final, "estructura_programatica": estructura_final,
-        "numero_libramiento": libramiento_final, "importe": importe_final, "clasificacion": clasificacion
-    }
+            if inst == "No encontrado": inst = linea
+    est_m = re.search(r'\b\d{12}\b', texto)
+    if est_m: est = est_m.group(0)
+    lib_m = re.search(r'(?:LIBRAMIENTO|NÚMERO|NO\.|Nº)\s*[:#-]?\s*(\b\d{1,10}\b)', texto, re.IGNORECASE)
+    lib = lib_m.group(1) if lib_m else (re.search(r'\b\d{1,6}\b', texto).group(0) if re.search(r'\b\d{1,6}\b', texto) else "No encontrado")
+    imp_m = re.search(r'RD\$?\s?[\d,]+\.\d{2}', texto)
+    if imp_m: imp = imp_m.group(0)
+    if "SERVICIOS BASICOS" in texto.upper() or "SERVICIO BASICO" in texto.upper(): clas = "SERVICIOS BASICOS"
+    return {"institucion": inst, "estructura": est, "libramiento": lib, "importe": imp, "clasificacion": clas}
 
 # ================= ENTRADA =================
 texto_pegado = st.text_area("📥 Pegue el texto aquí")
-
 if st.button("📤 Enviar al Historial"):
     if texto_pegado.strip():
-        nuevo_registro = extraer_datos(texto_pegado)
-        cursor.execute("""
-            INSERT INTO registros (institucion, estructura_programatica, numero_libramiento, importe, clasificacion) 
-            VALUES (?, ?, ?, ?, ?)
-        """, (nuevo_registro["institucion"], nuevo_registro["estructura_programatica"], 
-              nuevo_registro["numero_libramiento"], nuevo_registro["importe"], nuevo_registro["clasificacion"]))
-        conn.commit()
-
-        if nuevo_registro["clasificacion"] == "SERVICIOS BASICOS":
-            alerta = st.empty()
-            alerta.success("🚀 CLASIFICACIÓN DETECTADA: BIENES Y SERVICIOS")
-            time.sleep(3)
-            alerta.empty()
+        d = extraer_datos(texto_pegado)
+        ejecutar_query("INSERT INTO registros (institucion, estructura_programatica, numero_libramiento, importe, clasificacion) VALUES (?, ?, ?, ?, ?)", 
+                       (d["institucion"], d["estructura"], d["libramiento"], d["importe"], d["clasificacion"]), commit=True)
         st.rerun()
 
 # ================= HISTORIAL =================
 st.markdown("---")
 st.subheader("📊 Historial")
-df_historial = pd.read_sql_query("SELECT * FROM registros ORDER BY id DESC", conn)
+res_h = ejecutar_query("SELECT * FROM registros ORDER BY id DESC")
+df_h = pd.DataFrame(res_h, columns=["id", "institucion", "estructura_programatica", "numero_libramiento", "importe", "clasificacion"])
 
-if not df_historial.empty:
-    st.dataframe(df_historial, use_container_width=True, hide_index=True)
+if not df_h.empty:
+    st.data_editor(df_h, use_container_width=True, hide_index=True, num_rows="dynamic", key="editor_principal")
+else:
+    st.info("No hay registros.")
 
-# ================= SELECTOR DE EXPEDIENTE =================
+# ================= SELECTOR SEGURO =================
+st.markdown("---")
 registro_sel = None
-if not df_historial.empty:
-    def formato_seguro(x):
-        fila = df_historial[df_historial["id"] == x]
-        return f"Expediente #{x} — {fila.iloc[0]['institucion']} (Lib. {fila.iloc[0]['numero_libramiento']})" if not fila.empty else f"#{x}"
-
+if not df_h.empty:
+    opciones = df_h["id"].tolist()
     registro_sel = st.selectbox(
-        "📌 Seleccione expediente para trabajar el formulario:",
-        df_historial["id"].tolist(),
-        format_func=formato_seguro
+        "📌 Seleccione expediente para trabajar:", 
+        opciones, 
+        format_func=lambda x: f"ID #{x} - {df_h[df_h['id']==x]['institucion'].values[0]}" if not df_h[df_h['id']==x].empty else f"#{x}"
     )
 
-# ================= LÓGICA DE FORMULARIOS LIGADOS =================
+# ================= FORMULARIOS =================
+def crear_formulario_bienes_servicios(reg_id, en_uso=False):
+    check = ejecutar_query("SELECT id FROM registros WHERE id = ?", (reg_id,))
+    if not check:
+        return
 
-# 🧠 PASO 2 — Función para Cargar/Guardar Formulario de Bienes y Servicios
-def crear_formulario_bienes_servicios(registro_id, en_uso=False):
-    columnas = ["CC","CP","OFI","FACT","FIRMA_DIGITAL","Recep","RPE","DGII","TSS","OC",
-                "CONT","TITULO","DETE","JURI_INMO","TASACION","APROB_PRESI","VIAJE_PRESI"]
-
+    columnas = ["CC","CP","OFI","FACT","FIRMA_DIGITAL","Recep","RPE","DGII","TSS","OC","CONT","TITULO","DETE","JURI_INMO","TASACION","APROB_PRESI","VIAJE_PRESI"]
     if en_uso:
         st.markdown(f'### 📋 Bienes y Servicios <span class="badge-en-uso">En uso</span>', unsafe_allow_html=True)
     else:
         st.markdown("### 📋 Bienes y Servicios")
 
-    # Buscar si ya existe formulario guardado para este ID
-    df_guardado = pd.read_sql_query(
-        f"SELECT * FROM formulario_bienes_servicios WHERE registro_id={registro_id}", conn
-    )
+    res_f = ejecutar_query(f"SELECT CC, CP, OFI, FACT, FIRMA_DIGITAL, Recep, RPE, DGII, TSS, OC, CONT, TITULO, DETE, JURI_INMO, TASACION, APROB_PRESI, VIAJE_PRESI FROM formulario_bienes_servicios WHERE registro_id={reg_id}")
+    df_f = pd.DataFrame(res_f, columns=columnas) if res_f else pd.DataFrame([{c:"√" for c in columnas}])
 
-    if df_guardado.empty:
-        df = pd.DataFrame([{col:"√" for col in columnas}])
-    else:
-        # Renombramos columnas del SQL para que coincidan con la lista
-        df = df_guardado[columnas]
+    df_edit = st.data_editor(df_f, column_config={c: st.column_config.SelectboxColumn(options=["√","N/A"], width=65) for c in columnas}, hide_index=True, key=f"f_{reg_id}")
 
-    config = {col: st.column_config.SelectboxColumn(options=["√","N/A"], width=65) for col in columnas}
-    
-    # Editor de datos
-    df_editado = st.data_editor(df, column_config=config, hide_index=True, key=f"editor_{registro_id}")
-
-    # 🔹 BOTÓN GUARDAR LIGADO AL ID
-    if st.button("💾 Guardar Cambios en Formulario"):
-        datos = df_editado.iloc[0].to_dict()
-        cursor.execute("""
-            INSERT INTO formulario_bienes_servicios
-            (registro_id, CC, CP, OFI, FACT, FIRMA_DIGITAL, Recep, RPE, DGII, TSS, OC, CONT, TITULO, DETE, JURI_INMO, TASACION, APROB_PRESI, VIAJE_PRESI)
+    if st.button("💾 Guardar Formulario", key=f"b_{reg_id}"):
+        vals = df_edit.iloc[0].tolist()
+        ejecutar_query("""
+            INSERT INTO formulario_bienes_servicios (registro_id, CC, CP, OFI, FACT, FIRMA_DIGITAL, Recep, RPE, DGII, TSS, OC, CONT, TITULO, DETE, JURI_INMO, TASACION, APROB_PRESI, VIAJE_PRESI)
             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-            ON CONFLICT(registro_id) DO UPDATE SET
-            CC=excluded.CC, CP=excluded.CP, OFI=excluded.OFI, FACT=excluded.FACT,
-            FIRMA_DIGITAL=excluded.FIRMA_DIGITAL, Recep=excluded.Recep, RPE=excluded.RPE,
-            DGII=excluded.DGII, TSS=excluded.TSS, OC=excluded.OC, CONT=excluded.CONT,
-            TITULO=excluded.TITULO, DETE=excluded.DETE, JURI_INMO=excluded.JURI_INMO,
-            TASACION=excluded.TASACION, APROB_PRESI=excluded.APROB_PRESI, VIAJE_PRESI=excluded.VIAJE_PRESI
-        """, (registro_id, *datos.values()))
-        conn.commit()
-        st.success(f"✅ Formulario guardado y vinculado al expediente #{registro_id}")
+            ON CONFLICT(registro_id) DO UPDATE SET CC=excluded.CC, CP=excluded.CP, OFI=excluded.OFI, FACT=excluded.FACT, FIRMA_DIGITAL=excluded.FIRMA_DIGITAL, Recep=excluded.Recep, RPE=excluded.RPE, DGII=excluded.DGII, TSS=excluded.TSS, OC=excluded.OC, CONT=excluded.CONT, TITULO=excluded.TITULO, DETE=excluded.DETE, JURI_INMO=excluded.JURI_INMO, TASACION=excluded.TASACION, APROB_PRESI=excluded.APROB_PRESI, VIAJE_PRESI=excluded.VIAJE_PRESI
+        """, (reg_id, *vals), commit=True)
+        st.success(f"Formulario #{reg_id} guardado.")
 
-# Función genérica para los otros formularios (mientras no se liguen a BD)
-def crear_formulario_generico(titulo, columnas, clave):
-    st.markdown(f"### 📋 {titulo}")
-    df = pd.DataFrame([{col: "√" for col in columnas}])
-    config = {col: st.column_config.SelectboxColumn(options=["√", "N/A"], width=65) for col in columnas}
-    st.data_editor(df, column_config=config, use_container_width=False, hide_index=True, key=clave)
-
-st.markdown("---")
-
-# 🧠 PASO 3 — Llamada Condicional
 if registro_sel:
-    # Chequear clasificación del seleccionado para el círculo verde
-    fila_sel = df_historial[df_historial["id"] == registro_sel]
-    es_sb = fila_sel.iloc[0]["clasificacion"] == "SERVICIOS BASICOS" if not fila_sel.empty else False
-    
-    # Renderizar formulario persistente
-    crear_formulario_bienes_servicios(registro_sel, en_uso=es_sb)
+    fila_sel = df_h[df_h["id"]==registro_sel]
+    if not fila_sel.empty:
+        es_sb = fila_sel["clasificacion"].values[0] == "SERVICIOS BASICOS"
+        crear_formulario_bienes_servicios(registro_sel, en_uso=es_sb)
 
-# Otros formularios (pendientes de ligar a sus propias tablas)
-crear_formulario_generico("Transferencias",
-    ["OFI", "FIRMA DIGITAL", "PRES", "OFIC", "BENE", "NÓMINA", "CARTA RUTA", "RNC", "MERCADO VA", "DECRETO", "CONGRESO", "DIR. FIDE", "CONTR. FIDU", "DEUDA EXT", "ANTICIPO"],
-    "f_t"
-)
-
-crear_formulario_generico("Obras",
-    ["CC", "CP", "OFI", "FIRMA DIGITAL", "FACT", "Recep", "RPE", "DGII", "TSS", "OC", "CONT", "EVATEC", "CU", "SUP", "Cierre de Obra", "20%", "AVA", "FIEL"],
-    "f_o"
-)
+st.subheader("📋 Transferencias")
+st.data_editor(pd.DataFrame([{"OFI":"√"}]), hide_index=True, key="t")
+st.subheader("📋 Obras")
+st.data_editor(pd.DataFrame([{"CC":"√"}]), hide_index=True, key="o")
