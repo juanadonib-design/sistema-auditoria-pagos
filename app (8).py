@@ -47,14 +47,20 @@ def extraer_datos(texto):
         "Importe": importe.group(0) if importe else "No encontrado"
     }
 
-# ================= ENTRADA =================
-texto = st.text_area("📥 Pegue el texto del documento aquí")
+# ================= ENTRADA AUTOMÁTICA POR PEGADO =================
+texto_pegado = st.text_area("📥 Pegue el texto del documento aquí (El análisis es automático)")
 
-if st.button("🔍 Analizar texto"):
-    registro = extraer_datos(texto)
-    st.dataframe(pd.DataFrame([registro]))
-    guardar_registro(registro)
-    st.success("Registro guardado")
+# Si hay texto, se analiza de una vez sin esperar al botón
+if texto_pegado:
+    registro = extraer_datos(texto_pegado)
+    
+    st.write("### 🔍 Datos Detectados")
+    st.table(pd.DataFrame([registro]))
+    
+    # El botón ahora solo sirve para CONFIRMAR el guardado en la DB
+    if st.button("💾 Confirmar y Guardar en Historial"):
+        guardar_registro(registro)
+        st.success("Registro guardado en el historial")
 
 # ================= HISTORIAL =================
 st.markdown("---")
@@ -69,11 +75,12 @@ def crear_formulario_auditoria(titulo, columnas, clave_storage):
     
     df_init = pd.DataFrame([{col: "√" for col in columnas}])
     
+    # Mantenemos el ancho de 65px para forzar el formato vertical tipo sello
     config = {
         col: st.column_config.SelectboxColumn(
             label=col, 
             options=["√", "N/A"],
-            width=65, # Ancho reducido para forzar verticalidad de siglas
+            width=65, 
             required=True
         ) for col in columnas
     }
@@ -96,7 +103,7 @@ def crear_formulario_auditoria(titulo, columnas, clave_storage):
 
 # ================= RENDERIZADO DE LOS 3 FORMULARIOS =================
 
-# 1. BIENES Y SERVICIOS (Con títulos modificados)
+# 1. BIENES Y SERVICIOS
 cols_bienes = ["CC", "CP", "OFI", "FACT", "FIRMA DIGITAL", "Recep", "RPE", "DGII", "TSS", "OC", "CONT", "TITULO", "DETE", "JURI INMO", "TASACIÓN", "APROB. PRESI", "VIAJE PRESI"]
 crear_formulario_auditoria("Formulario Bienes y Servicios", cols_bienes, "f_bienes")
 
@@ -108,8 +115,5 @@ crear_formulario_auditoria("Formulario de Transferencias", cols_transf, "f_trans
 cols_obras = ["CC", "CP", "OFI", "FIRMA DIGITAL", "FACT", "Recep", "RPE", "DGII", "TSS", "OC", "CONT", "EVATEC", "CU", "SUP", "Cierre de Obra", "20%", "AVA", "FIEL"]
 crear_formulario_auditoria("Formulario de Obras", cols_obras, "f_obras")
 
-# ================= GUARDAR (LOGICA GENERAL) =================
 st.markdown("---")
-if st.button("💾 Guardar Todo el Informe"):
-    # Aquí puedes añadir la lógica para consolidar y guardar en Excel si lo deseas
-    st.success("Información de auditoría procesada correctamente")
+st.info("Complete las verificaciones arriba y presione Ctrl+P para imprimir su reporte si es necesario.")
