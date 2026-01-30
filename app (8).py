@@ -131,18 +131,17 @@ df_historial = pd.read_sql_query("SELECT * FROM registros ORDER BY id DESC", con
 registro_sel = None
 if not df_historial.empty:
     registro_sel = st.selectbox(
-            # 🔴 BORRAR EXPEDIENTE PERMANENTE
+        "📌 Seleccione expediente",
+        df_historial["id"],
+        format_func=lambda x: f"#{x} — {df_historial.loc[df_historial.id==x,'institucion'].values[0]}"
+    )
+     # 🔴 BORRAR EXPEDIENTE PERMANENTE
     if st.button("🗑️ Borrar expediente seleccionado"):
         cursor.execute("DELETE FROM registros WHERE id = ?", (registro_sel,))
         conn.commit()
         st.warning("Expediente eliminado permanentemente")
         time.sleep(1)
         st.rerun()
-
-        "📌 Seleccione expediente",
-        df_historial["id"],
-        format_func=lambda x: f"#{x} — {df_historial.loc[df_historial.id==x,'institucion'].values[0]}"
-    )
 
 # ================= FORMULARIO LIGADO =================
 def crear_formulario_bienes_servicios(registro_id):
@@ -185,4 +184,5 @@ if registro_sel:
     clasif = df_historial.loc[df_historial.id==registro_sel,"clasificacion"].values[0]
     if clasif == "SERVICIOS BASICOS":
         crear_formulario_bienes_servicios(registro_sel)
+
 
