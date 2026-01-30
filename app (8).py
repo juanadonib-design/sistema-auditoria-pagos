@@ -27,6 +27,7 @@ st.markdown("""
 
 # ================= BASE DE DATOS =================
 conn = sqlite3.connect("auditoria.db", check_same_thread=False)
+conn.execute("PRAGMA foreign_keys = ON")  # 👈 AQUÍ VA
 cursor = conn.cursor()
 
 cursor.execute("""
@@ -130,6 +131,14 @@ df_historial = pd.read_sql_query("SELECT * FROM registros ORDER BY id DESC", con
 registro_sel = None
 if not df_historial.empty:
     registro_sel = st.selectbox(
+            # 🔴 BORRAR EXPEDIENTE PERMANENTE
+    if st.button("🗑️ Borrar expediente seleccionado"):
+        cursor.execute("DELETE FROM registros WHERE id = ?", (registro_sel,))
+        conn.commit()
+        st.warning("Expediente eliminado permanentemente")
+        time.sleep(1)
+        st.rerun()
+
         "📌 Seleccione expediente",
         df_historial["id"],
         format_func=lambda x: f"#{x} — {df_historial.loc[df_historial.id==x,'institucion'].values[0]}"
@@ -176,3 +185,4 @@ if registro_sel:
     clasif = df_historial.loc[df_historial.id==registro_sel,"clasificacion"].values[0]
     if clasif == "SERVICIOS BASICOS":
         crear_formulario_bienes_servicios(registro_sel)
+
