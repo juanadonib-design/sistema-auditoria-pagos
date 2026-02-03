@@ -106,20 +106,22 @@ def extraer_datos(texto):
 
 # ================= ENTRADA =================
 texto_pegado = st.text_area("📥 Pegue el texto aquí")
+cuenta_objetal_manual = st.text_input("🏷️ Cuenta Objetal (llenado manual por auditor)")
 
 if st.button("📤 Enviar al Historial"):
     nuevo_registro = extraer_datos(texto_pegado)
 
     cursor.execute("""
-        INSERT INTO registros (institucion, estructura_programatica, numero_libramiento, importe, clasificacion, rnc) 
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO registros (institucion, estructura_programatica, numero_libramiento, importe, clasificacion, rnc, cuenta_objetal) 
+        VALUES (?, ?, ?, ?, ?, ?, ?)
     """, (
         nuevo_registro["institucion"],
         nuevo_registro["estructura_programatica"],
         nuevo_registro["numero_libramiento"],
         nuevo_registro["importe"],
         nuevo_registro["clasificacion"],
-        nuevo_registro["rnc"]
+        nuevo_registro["rnc"],
+        cuenta_objetal_manual
     ))
     conn.commit()
 
@@ -260,6 +262,7 @@ if registro_sel:
     clasif = df_historial.loc[df_historial.id==registro_sel,"clasificacion"].values[0]
     if clasif == "SERVICIOS BASICOS":
         crear_formulario_bienes_servicios(registro_sel)
+
 
 
 
