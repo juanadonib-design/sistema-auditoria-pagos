@@ -202,18 +202,37 @@ datos_editados = st.data_editor(
     use_container_width=True,
     key=f"preview_{registro_sel}"
 )
-# =========================================================
-# 📤 EXPORTAR EXPEDIENTE + FORMULARIO A EXCEL
-# =========================================================
+from io import BytesIO
 
-def generar_excel_expediente(registro_id):
+# =====================================================
+# 📤 EXPORTAR EXPEDIENTE + FORMULARIO A EXCEL
+# =====================================================
+
+def generar_excel_unificado(registro_id):
     buffer = BytesIO()
 
     with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
-        # Hoja 1 — Datos del expediente
-        datos_exp.to_excel(writer, index=False, sheet_name="Expediente")
 
-        # Hoja 2 — Formulario Bienes y Servicios
+        # 🟦 HOJA 1 — VISTA PREVIA DEL EXPEDIENTE
+        datos_excel = df_historial[df_historial.id == registro_id][[
+            "institucion",
+            "estructura_programatica",
+            "numero_libramiento",
+            "importe",
+            "cuenta_objetal"
+        ]]
+
+        datos_excel.columns = [
+            "Institución",
+            "Estructura Programática",
+            "Número Libramiento",
+            "Importe",
+            "Cuenta Objetal"
+        ]
+
+        datos_excel.to_excel(writer, index=False, sheet_name="Expediente")
+
+        # 🟩 HOJA 2 — FORMULARIO BIENES Y SERVICIOS
         df_form = pd.read_sql_query(
             "SELECT * FROM formulario_bienes_servicios WHERE registro_id=?",
             conn,
@@ -221,39 +240,20 @@ def generar_excel_expediente(registro_id):
         )
 
         if not df_form.empty:
-            df_form.to_excel(writer, index=False, sheet_name="Bienes y Servicios")
+            df_form.to_excel(writer, index=False, sheet_name="Formulario BS")
 
     buffer.seek(0)
     return buffer
 
-excel_file = generar_excel_expediente(registro_sel)
+
+excel_file = generar_excel_unificado(registro_sel)
 
 st.download_button(
-    label="📥 Exportar expediente completo a Excel",
+    label="📥 Exportar expediente completo",
     data=excel_file,
-    file_name=f"expediente_{registro_sel}.xlsx",
+    file_name=f"Expediente_{registro_sel}.xlsx",
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 )
-
-if st.button("💾 Guardar cambios de Cuenta Objetal"):
-    nueva_cuenta = datos_editados["Cuenta Objetal"].iloc[0]
-
-    cursor.execute(
-        "UPDATE registros SET cuenta_objetal=? WHERE id=?",
-        (nueva_cuenta, registro_sel)
-    )
-    conn.commit()
-
-    st.success("Cuenta Objetal actualizada correctamente")
-    st.rerun()
-
-# Obtener valor guardado si existe
-fila = df_historial.loc[df_historial.id == registro_sel]
-
-if not fila.empty:
-    cuenta_actual = fila["cuenta_objetal"].iloc[0] if "cuenta_objetal" in fila.columns else ""
-else:
-    cuenta_actual = ""
 
 
 # ================= FORMULARIO =================
@@ -343,6 +343,7 @@ if registro_sel:
     clasif = df_historial.loc[df_historial.id==registro_sel,"clasificacion"].values[0]
     if clasif == "SERVICIOS BASICOS":
         crear_formulario_bienes_servicios(registro_sel)
+
 
 
 
