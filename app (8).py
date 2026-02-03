@@ -202,37 +202,20 @@ datos_editados = st.data_editor(
     use_container_width=True,
     key=f"preview_{registro_sel}"
 )
-from io import BytesIO
+def generar_excel_unificado(vista_previa, formulario):
+    import pandas as pd
+    from io import BytesIO
 
-def generar_excel_unificado(registro_id):
     buffer = BytesIO()
 
-    # 🟦 DATOS DEL EXPEDIENTE
-    df_exp = df_historial[df_historial.id == registro_id][[
-        "institucion",
-        "estructura_programatica",
-        "numero_libramiento",
-        "importe",
-        "cuenta_objetal"
-    ]]
-
-    # 🟩 DATOS DEL FORMULARIO
-    df_form = pd.read_sql_query(
-        "SELECT * FROM formulario_bienes_servicios WHERE registro_id=?",
-        conn,
-        params=(registro_id,)
+    # 🔗 Unir datos
+    df_unificado = pd.concat(
+        [vista_previa.reset_index(drop=True),
+         formulario.reset_index(drop=True)],
+        axis=1
     )
 
-    # 🧩 UNIFICAR EN UNA SOLA FILA
-    if not df_form.empty:
-        df_unificado = pd.concat(
-            [df_exp.reset_index(drop=True), df_form.reset_index(drop=True)],
-            axis=1
-        )
-    else:
-        df_unificado = df_exp.copy()
-
-    # 🏷 Nombres más claros
+    # 🏷 Renombrar columnas
     df_unificado.rename(columns={
         "institucion": "Institución",
         "estructura_programatica": "Estructura Programática",
@@ -240,15 +223,15 @@ def generar_excel_unificado(registro_id):
         "importe": "Importe",
         "cuenta_objetal": "Cuenta Objetal"
     }, inplace=True)
-    
-# ❌ Eliminar columnas técnicas si existen
-df_unificado = df_unificado.drop(columns=["id", "registro_id"], errors="ignore")
 
-    # 💾 Guardar en una sola hoja
-with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+    # ❌ Quitar columnas técnicas
+    df_unificado = df_unificado.drop(columns=["id", "registro_id"], errors="ignore")
+
+    # 💾 Crear Excel
+    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
         df_unificado.to_excel(writer, index=False, sheet_name="Expediente Completo")
 
-buffer.seek(0)
+    buffer.seek(0)
     return buffer
 
 excel_file = generar_excel_unificado(registro_sel)
@@ -347,6 +330,7 @@ if registro_sel:
     clasif = df_historial.loc[df_historial.id==registro_sel,"clasificacion"].values[0]
     if clasif == "SERVICIOS BASICOS":
         crear_formulario_bienes_servicios(registro_sel)
+
 
 
 
