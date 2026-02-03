@@ -49,6 +49,11 @@ columnas_existentes = [col[1] for col in cursor.fetchall()]
 if "rnc" not in columnas_existentes:
     cursor.execute("ALTER TABLE registros ADD COLUMN rnc TEXT")
     conn.commit()
+    
+# 🔧 AGREGAR CUENTA OBJETAL SI NO EXISTE
+if "cuenta_objetal" not in columnas_existentes:
+    cursor.execute("ALTER TABLE registros ADD COLUMN cuenta_objetal TEXT")
+    conn.commit()
 
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS formulario_bienes_servicios (
@@ -262,6 +267,7 @@ if registro_sel:
     clasif = df_historial.loc[df_historial.id==registro_sel,"clasificacion"].values[0]
     if clasif == "SERVICIOS BASICOS":
         crear_formulario_bienes_servicios(registro_sel)
+
 
 
 
