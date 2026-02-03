@@ -204,43 +204,46 @@ datos_editados = st.data_editor(
 )
 from io import BytesIO
 
-# =====================================================
-# 📤 EXPORTAR EXPEDIENTE + FORMULARIO A EXCEL
-# =====================================================
-
 def generar_excel_unificado(registro_id):
     buffer = BytesIO()
 
-    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+    # 🟦 DATOS DEL EXPEDIENTE
+    df_exp = df_historial[df_historial.id == registro_id][[
+        "institucion",
+        "estructura_programatica",
+        "numero_libramiento",
+        "importe",
+        "cuenta_objetal"
+    ]]
 
-        # 🟦 HOJA 1 — VISTA PREVIA DEL EXPEDIENTE
-        datos_excel = df_historial[df_historial.id == registro_id][[
-            "institucion",
-            "estructura_programatica",
-            "numero_libramiento",
-            "importe",
-            "cuenta_objetal"
-        ]]
+    # 🟩 DATOS DEL FORMULARIO
+    df_form = pd.read_sql_query(
+        "SELECT * FROM formulario_bienes_servicios WHERE registro_id=?",
+        conn,
+        params=(registro_id,)
+    )
 
-        datos_excel.columns = [
-            "Institución",
-            "Estructura Programática",
-            "Número Libramiento",
-            "Importe",
-            "Cuenta Objetal"
-        ]
-
-        datos_excel.to_excel(writer, index=False, sheet_name="Expediente")
-
-        # 🟩 HOJA 2 — FORMULARIO BIENES Y SERVICIOS
-        df_form = pd.read_sql_query(
-            "SELECT * FROM formulario_bienes_servicios WHERE registro_id=?",
-            conn,
-            params=(registro_id,)
+    # 🧩 UNIFICAR EN UNA SOLA FILA
+    if not df_form.empty:
+        df_unificado = pd.concat(
+            [df_exp.reset_index(drop=True), df_form.reset_index(drop=True)],
+            axis=1
         )
+    else:
+        df_unificado = df_exp.copy()
 
-        if not df_form.empty:
-            df_form.to_excel(writer, index=False, sheet_name="Formulario BS")
+    # 🏷 Nombres más claros
+    df_unificado.rename(columns={
+        "institucion": "Institución",
+        "estructura_programatica": "Estructura Programática",
+        "numero_libramiento": "Número Libramiento",
+        "importe": "Importe",
+        "cuenta_objetal": "Cuenta Objetal"
+    }, inplace=True)
+
+    # 💾 Guardar en una sola hoja
+    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+        df_unificado.to_excel(writer, index=False, sheet_name="Expediente Completo")
 
     buffer.seek(0)
     return buffer
@@ -249,11 +252,12 @@ def generar_excel_unificado(registro_id):
 excel_file = generar_excel_unificado(registro_sel)
 
 st.download_button(
-    label="📥 Exportar expediente completo",
+    label="📥 Exportar expediente unificado",
     data=excel_file,
     file_name=f"Expediente_{registro_sel}.xlsx",
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 )
+
 
 
 # ================= FORMULARIO =================
@@ -343,6 +347,7 @@ if registro_sel:
     clasif = df_historial.loc[df_historial.id==registro_sel,"clasificacion"].values[0]
     if clasif == "SERVICIOS BASICOS":
         crear_formulario_bienes_servicios(registro_sel)
+
 
 
 
