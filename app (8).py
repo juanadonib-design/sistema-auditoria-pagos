@@ -240,6 +240,9 @@ def generar_excel_unificado(registro_id):
         "importe": "Importe",
         "cuenta_objetal": "Cuenta Objetal"
     }, inplace=True)
+    
+# ❌ Eliminar columnas técnicas si existen
+df_unificado = df_unificado.drop(columns=["id", "registro_id"], errors="ignore")
 
     # 💾 Guardar en una sola hoja
     with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
@@ -347,6 +350,7 @@ if registro_sel:
     clasif = df_historial.loc[df_historial.id==registro_sel,"clasificacion"].values[0]
     if clasif == "SERVICIOS BASICOS":
         crear_formulario_bienes_servicios(registro_sel)
+
 
 
 
