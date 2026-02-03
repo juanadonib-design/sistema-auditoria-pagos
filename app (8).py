@@ -8,7 +8,6 @@ import unicodedata
 st.set_page_config(page_title="Sistema Auditoría de Pagos", layout="wide")
 st.title("🧾 Sistema de Apoyo a la Auditoría de Pagos")
 
-# 🔵 CSS CÍRCULO EN USO
 st.markdown("""
 <style>
 .badge-en-uso {
@@ -27,7 +26,7 @@ st.markdown("""
 
 # ================= BASE DE DATOS =================
 conn = sqlite3.connect("auditoria.db", check_same_thread=False)
-conn.execute("PRAGMA foreign_keys = ON")  # 👈 AQUÍ VA
+conn.execute("PRAGMA foreign_keys = ON")
 cursor = conn.cursor()
 
 cursor.execute("""
@@ -37,7 +36,8 @@ CREATE TABLE IF NOT EXISTS registros (
     estructura_programatica TEXT,
     numero_libramiento TEXT,
     importe TEXT,
-    clasificacion TEXT
+    clasificacion TEXT,
+    rnc TEXT
 )
 """)
 
@@ -62,14 +62,13 @@ def extraer_datos(texto):
     importe_final = "No encontrado"
     clasificacion = "General"
 
+    rnc_match = re.search(r'\b\d{9,11}\b', texto)
+    rnc_final = rnc_match.group(0) if rnc_match else "No encontrado"
+
     for i, linea in enumerate(lineas):
         if re.search(r'\bINSTITUCI[ÓO]N\b', linea, re.IGNORECASE):
             if i + 1 < len(lineas):
                 institucion_final = lineas[i+1]
-
-        elif re.search(r'\b(MINISTERIO|INABIE|DIRECCION|ALCALDIA|AYUNTAMIENTO)\b', linea, re.IGNORECASE):
-            if institucion_final == "No encontrado":
-                institucion_final = linea
 
     est_match = re.search(r'\b\d{12}\b', texto)
     if est_match: estructura_final = est_match.group(0)
@@ -80,11 +79,8 @@ def extraer_datos(texto):
     imp_match = re.search(r'RD\$?\s?[\d,]+\.\d{2}', texto)
     if imp_match: importe_final = imp_match.group(0)
 
-    # 🔥 NORMALIZAR TILDES PARA DETECCIÓN
-    texto_up = texto.upper()
-    texto_norm = unicodedata.normalize('NFD', texto_up).encode('ascii', 'ignore').decode('utf-8')
-
-    if "SERVICIOS BASICOS" in texto_norm or "SERVICIO BASICO" in texto_norm:
+    texto_norm = unicodedata.normalize('NFD', texto.upper()).encode('ascii','ignore').decode()
+    if "SERVICIOS BASICOS" in texto_norm:
         clasificacion = "SERVICIOS BASICOS"
 
     return {
@@ -92,7 +88,8 @@ def extraer_datos(texto):
         "estructura_programatica": estructura_final,
         "numero_libramiento": libramiento_final,
         "importe": importe_final,
-        "clasificacion": clasificacion
+        "clasificacion": clasificacion,
+        "rnc": rnc_final
     }
 
 # ================= ENTRADA =================
@@ -102,25 +99,17 @@ if st.button("📤 Enviar al Historial"):
     nuevo_registro = extraer_datos(texto_pegado)
 
     cursor.execute("""
-        INSERT INTO registros (institucion, estructura_programatica, numero_libramiento, importe, clasificacion) 
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO registros (institucion, estructura_programatica, numero_libramiento, importe, clasificacion, rnc) 
+        VALUES (?, ?, ?, ?, ?, ?)
     """, (
         nuevo_registro["institucion"],
         nuevo_registro["estructura_programatica"],
         nuevo_registro["numero_libramiento"],
         nuevo_registro["importe"],
-        nuevo_registro["clasificacion"]
+        nuevo_registro["clasificacion"],
+        nuevo_registro["rnc"]
     ))
     conn.commit()
-
-    if nuevo_registro["clasificacion"] == "SERVICIOS BASICOS":
-        alerta = st.empty()
-        alerta.success("🚀 BIENES Y SERVICIOS")
-        time.sleep(3)
-        alerta.empty()
-    else:
-        st.success("✅ Registro enviado")
-
     st.rerun()
 
 # ================= HISTORIAL =================
@@ -135,33 +124,58 @@ if not df_historial.empty:
         df_historial["id"],
         format_func=lambda x: f"#{x} — {df_historial.loc[df_historial.id==x,'institucion'].values[0]}"
     )
-     # 🔴 BORRAR EXPEDIENTE PERMANENTE
+
     if st.button("🗑️ Borrar expediente seleccionado"):
         cursor.execute("DELETE FROM registros WHERE id = ?", (registro_sel,))
         conn.commit()
-        st.warning("Expediente eliminado permanentemente")
-        time.sleep(1)
         st.rerun()
 
-# ================= FORMULARIO LIGADO =================
+# ================= FORMULARIO =================
 def crear_formulario_bienes_servicios(registro_id):
+
+    rnc = pd.read_sql_query(f"SELECT rnc FROM registros WHERE id={registro_id}", conn).iloc[0]["rnc"]
+
+    condicion = None
+    if str(rnc).startswith("1"):
+        condicion = 1
+    elif str(rnc).startswith("4"):
+        condicion = 2
 
     columnas = ["CC","CP","OFI","FACT","FIRMA_DIGITAL","Recep","RPE","DGII","TSS","OC",
                 "CONT","TITULO","DETE","JURI_INMO","TASACION","APROB_PRESI","VIAJE_PRESI"]
 
     st.markdown('### 📋 Bienes y Servicios <span class="badge-en-uso">En uso</span>', unsafe_allow_html=True)
 
-    df_guardado = pd.read_sql_query(
-        f"SELECT * FROM formulario_bienes_servicios WHERE registro_id={registro_id}", conn
-    )
+    df_guardado = pd.read_sql_query(f"SELECT * FROM formulario_bienes_servicios WHERE registro_id={registro_id}", conn)
 
     if df_guardado.empty:
-        df = pd.DataFrame([{col:"√" for col in columnas}])
+        valores = {col: "N/A" for col in columnas}
+
+        if condicion == 1:
+            valores.update({"OFI":"√","FACT":"√","RPE":"√","DGII":"√","TSS":"√"})
+
+        elif condicion == 2:
+            valores.update({"OFI":"√","FACT":"√"})
+
+        df = pd.DataFrame([valores])
     else:
         df = df_guardado[columnas]
 
     config = {col: st.column_config.SelectboxColumn(options=["√","N/A"], width=65) for col in columnas}
     df_editado = st.data_editor(df, column_config=config, hide_index=True)
+
+    colA, colB = st.columns(2)
+
+    if condicion in [1,2]:
+        if colA.button("✔ Marcar CC y CP"):
+            df_editado.at[0,"CC"] = "√"
+            df_editado.at[0,"CP"] = "√"
+
+    if condicion == 2:
+        if colB.button("✔ Marcar DGII, TSS y RPE"):
+            df_editado.at[0,"DGII"] = "√"
+            df_editado.at[0,"TSS"] = "√"
+            df_editado.at[0,"RPE"] = "√"
 
     if st.button("💾 Guardar Formulario"):
         datos = df_editado.iloc[0].to_dict()
@@ -179,10 +193,7 @@ def crear_formulario_bienes_servicios(registro_id):
         conn.commit()
         st.success("Formulario guardado")
 
-# 🔵 MOSTRAR SOLO SI ES SERVICIOS BÁSICOS
 if registro_sel:
     clasif = df_historial.loc[df_historial.id==registro_sel,"clasificacion"].values[0]
     if clasif == "SERVICIOS BASICOS":
         crear_formulario_bienes_servicios(registro_sel)
-
-
