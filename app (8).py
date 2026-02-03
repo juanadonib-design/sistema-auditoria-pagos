@@ -149,7 +149,10 @@ if not df_historial.empty:
 
 # ================= FORMULARIO =================
 def crear_formulario_bienes_servicios(registro_id):
-    st.subheader("📋 FORMULARIO — SERVICIOS BÁSICOS")
+    st.markdown(
+    '### 📋 Formulario de Bienes y Servicios <span class="badge-en-uso">En uso</span>',
+    unsafe_allow_html=True
+)
 
     columnas = ["CC","CP","OFI","FACT","FIRMA_DIGITAL","Recep","RPE","DGII","TSS",
                 "OC","CONT","TITULO","DETE","JURI_INMO","TASACION",
@@ -231,5 +234,6 @@ if registro_sel:
     clasif = df_historial.loc[df_historial.id==registro_sel,"clasificacion"].values[0]
     if clasif == "SERVICIOS BASICOS":
         crear_formulario_bienes_servicios(registro_sel)
+
 
 
