@@ -141,43 +141,6 @@ if st.button("📤 Enviar al Historial"):
 # ================= HISTORIAL =================
 st.markdown("---")
 st.subheader("📊 Historial")
-import io
-
-st.markdown("### 📤 Exportación General del Sistema")
-
-if st.button("📥 Exportar TODOS los expedientes a Excel"):
-
-    df_export = pd.read_sql_query("""
-        SELECT
-            r.institucion,
-            r.estructura_programatica,
-            r.numero_libramiento,
-            r.importe,
-            r.cuenta_objetal,
-            r.clasificacion,
-
-            f.CC, f.CP, f.OFI, f.FACT, f.FIRMA_DIGITAL, f.Recep,
-            f.RPE, f.DGII, f.TSS, f.OC, f.CONT, f.TITULO,
-            f.DETE, f.JURI_INMO, f.TASACION, f.APROB_PRESI, f.VIAJE_PRESI
-
-        FROM registros r
-        LEFT JOIN formulario_bienes_servicios f
-        ON r.id = f.registro_id
-
-        ORDER BY r.id DESC
-    """, conn)
-
-    buffer = io.BytesIO()
-    df_export.to_excel(buffer, index=False, engine="openpyxl")
-    buffer.seek(0)
-
-    st.download_button(
-        "⬇️ Descargar Excel General",
-        buffer,
-        file_name="Auditoria_Completa.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
-
 df_historial = pd.read_sql_query("SELECT * FROM registros ORDER BY id DESC", conn)
 
 registro_sel = None
@@ -328,31 +291,43 @@ if registro_sel:
     if clasif == "SERVICIOS BASICOS":
         crear_formulario_bienes_servicios(registro_sel)
 
+# =====================================================
+# 📤 EXPORTACIÓN GENERAL DEL SISTEMA (DEBAJO DE FORMULARIOS)
+# =====================================================
+import io
 
+st.markdown("---")
+st.markdown("## 📤 Exportación General del Sistema")
 
+if st.button("📥 Exportar TODOS los expedientes a Excel"):
 
+    df_export = pd.read_sql_query("""
+        SELECT
+            r.institucion,
+            r.estructura_programatica,
+            r.numero_libramiento,
+            r.importe,
+            r.cuenta_objetal,
+            r.clasificacion,
 
+            f.CC, f.CP, f.OFI, f.FACT, f.FIRMA_DIGITAL, f.Recep,
+            f.RPE, f.DGII, f.TSS, f.OC, f.CONT, f.TITULO,
+            f.DETE, f.JURI_INMO, f.TASACION, f.APROB_PRESI, f.VIAJE_PRESI
 
+        FROM registros r
+        LEFT JOIN formulario_bienes_servicios f
+        ON r.id = f.registro_id
 
+        ORDER BY r.id DESC
+    """, conn)
 
+    buffer = io.BytesIO()
+    df_export.to_excel(buffer, index=False, engine="openpyxl")
+    buffer.seek(0)
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    st.download_button(
+        "⬇️ Descargar Excel General",
+        buffer,
+        file_name="Auditoria_Completa.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
