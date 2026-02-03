@@ -146,22 +146,31 @@ if not df_historial.empty:
         st.warning("Expediente eliminado permanentemente")
         time.sleep(1)
         st.rerun()
-    # ================= VISTA PREVIA DEL EXPEDIENTE =================
-if registro_sel:
-    datos_exp = df_historial[df_historial.id == registro_sel].iloc[0]
+        # ================= VISTA PREVIA TIPO EXCEL =================
+    if registro_sel:
+        datos_exp = df_historial[df_historial.id == registro_sel][[
+            "institucion",
+            "estructura_programatica",
+            "numero_libramiento",
+            "importe",
+            "cuenta_objetal"
+        ]]
 
-    st.markdown("### 📂 Datos del Expediente")
-    
-    col1, col2 = st.columns(2)
+        datos_exp.columns = [
+            "🏢 Institución",
+            "📊 Estructura Programática",
+            "📄 Número Libramiento",
+            "💰 Importe",
+            "🧾 Cuenta Objetal"
+        ]
 
-    with col1:
-        st.info(f"🏢 **Institución:** {datos_exp['institucion']}")
-        st.info(f"📊 **Estructura Programática:** {datos_exp['estructura_programatica']}")
-        st.info(f"📄 **Número Libramiento:** {datos_exp['numero_libramiento']}")
+        st.markdown("### 📂 Vista previa del expediente")
+        st.dataframe(
+            datos_exp,
+            use_container_width=True,
+            hide_index=True
+        )
 
-    with col2:
-        st.info(f"💰 **Importe:** {datos_exp['importe']}")
-        st.info(f"🧾 **Cuenta Objetal:** {datos_exp.get('cuenta_objetal', 'No encontrado')}")
 
 
 # ================= FORMULARIO =================
@@ -251,6 +260,7 @@ if registro_sel:
     clasif = df_historial.loc[df_historial.id==registro_sel,"clasificacion"].values[0]
     if clasif == "SERVICIOS BASICOS":
         crear_formulario_bienes_servicios(registro_sel)
+
 
 
 
