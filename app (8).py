@@ -8,6 +8,7 @@ import unicodedata
 st.set_page_config(page_title="Sistema Auditoría de Pagos", layout="wide")
 st.title("🧾 Sistema de Apoyo a la Auditoría de Pagos")
 
+# 🔵 CSS
 st.markdown("""
 <style>
 .badge-en-uso {
@@ -29,6 +30,7 @@ conn = sqlite3.connect("auditoria.db", check_same_thread=False)
 conn.execute("PRAGMA foreign_keys = ON")
 cursor = conn.cursor()
 
+# 🔧 CREAR TABLA
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS registros (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -40,6 +42,13 @@ CREATE TABLE IF NOT EXISTS registros (
     rnc TEXT
 )
 """)
+
+# 🔧 SI LA TABLA ES VIEJA Y NO TIENE RNC → LA AGREGA
+cursor.execute("PRAGMA table_info(registros)")
+columnas_existentes = [col[1] for col in cursor.fetchall()]
+if "rnc" not in columnas_existentes:
+    cursor.execute("ALTER TABLE registros ADD COLUMN rnc TEXT")
+    conn.commit()
 
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS formulario_bienes_servicios (
@@ -63,12 +72,15 @@ def extraer_datos(texto):
     clasificacion = "General"
 
     rnc_match = re.search(r'\b\d{9,11}\b', texto)
-    rnc_final = rnc_match.group(0) if rnc_match else "No encontrado"
+    rnc_final = rnc_match.group(0) if rnc_match else ""
 
     for i, linea in enumerate(lineas):
         if re.search(r'\bINSTITUCI[ÓO]N\b', linea, re.IGNORECASE):
             if i + 1 < len(lineas):
                 institucion_final = lineas[i+1]
+        elif re.search(r'\b(MINISTERIO|INABIE|DIRECCION|ALCALDIA|AYUNTAMIENTO)\b', linea, re.IGNORECASE):
+            if institucion_final == "No encontrado":
+                institucion_final = linea
 
     est_match = re.search(r'\b\d{12}\b', texto)
     if est_match: estructura_final = est_match.group(0)
@@ -79,8 +91,8 @@ def extraer_datos(texto):
     imp_match = re.search(r'RD\$?\s?[\d,]+\.\d{2}', texto)
     if imp_match: importe_final = imp_match.group(0)
 
-    texto_norm = unicodedata.normalize('NFD', texto.upper()).encode('ascii','ignore').decode()
-    if "SERVICIOS BASICOS" in texto_norm:
+    texto_norm = unicodedata.normalize('NFD', texto.upper()).encode('ascii', 'ignore').decode('utf-8')
+    if "SERVICIOS BASICOS" in texto_norm or "SERVICIO BASICO" in texto_norm:
         clasificacion = "SERVICIOS BASICOS"
 
     return {
@@ -110,6 +122,8 @@ if st.button("📤 Enviar al Historial"):
         nuevo_registro["rnc"]
     ))
     conn.commit()
+
+    st.success("Registro guardado")
     st.rerun()
 
 # ================= HISTORIAL =================
@@ -125,57 +139,36 @@ if not df_historial.empty:
         format_func=lambda x: f"#{x} — {df_historial.loc[df_historial.id==x,'institucion'].values[0]}"
     )
 
+    # 🗑 BORRADO PERMANENTE
     if st.button("🗑️ Borrar expediente seleccionado"):
         cursor.execute("DELETE FROM registros WHERE id = ?", (registro_sel,))
         conn.commit()
+        st.warning("Expediente eliminado permanentemente")
+        time.sleep(1)
         st.rerun()
 
 # ================= FORMULARIO =================
 def crear_formulario_bienes_servicios(registro_id):
 
-    rnc = pd.read_sql_query(f"SELECT rnc FROM registros WHERE id={registro_id}", conn).iloc[0]["rnc"]
-
-    condicion = None
-    if str(rnc).startswith("1"):
-        condicion = 1
-    elif str(rnc).startswith("4"):
-        condicion = 2
+    df_rnc = pd.read_sql_query("SELECT rnc FROM registros WHERE id=?", conn, params=(registro_id,))
+    rnc = str(df_rnc.iloc[0]["rnc"]) if not df_rnc.empty else ""
 
     columnas = ["CC","CP","OFI","FACT","FIRMA_DIGITAL","Recep","RPE","DGII","TSS","OC",
                 "CONT","TITULO","DETE","JURI_INMO","TASACION","APROB_PRESI","VIAJE_PRESI"]
 
     st.markdown('### 📋 Bienes y Servicios <span class="badge-en-uso">En uso</span>', unsafe_allow_html=True)
 
-    df_guardado = pd.read_sql_query(f"SELECT * FROM formulario_bienes_servicios WHERE registro_id={registro_id}", conn)
+    df_guardado = pd.read_sql_query(
+        "SELECT * FROM formulario_bienes_servicios WHERE registro_id=?", conn, params=(registro_id,)
+    )
 
     if df_guardado.empty:
-        valores = {col: "N/A" for col in columnas}
-
-        if condicion == 1:
-            valores.update({"OFI":"√","FACT":"√","RPE":"√","DGII":"√","TSS":"√"})
-
-        elif condicion == 2:
-            valores.update({"OFI":"√","FACT":"√"})
-
-        df = pd.DataFrame([valores])
+        df = pd.DataFrame([{col:"√" for col in columnas}])
     else:
         df = df_guardado[columnas]
 
     config = {col: st.column_config.SelectboxColumn(options=["√","N/A"], width=65) for col in columnas}
     df_editado = st.data_editor(df, column_config=config, hide_index=True)
-
-    colA, colB = st.columns(2)
-
-    if condicion in [1,2]:
-        if colA.button("✔ Marcar CC y CP"):
-            df_editado.at[0,"CC"] = "√"
-            df_editado.at[0,"CP"] = "√"
-
-    if condicion == 2:
-        if colB.button("✔ Marcar DGII, TSS y RPE"):
-            df_editado.at[0,"DGII"] = "√"
-            df_editado.at[0,"TSS"] = "√"
-            df_editado.at[0,"RPE"] = "√"
 
     if st.button("💾 Guardar Formulario"):
         datos = df_editado.iloc[0].to_dict()
@@ -193,6 +186,7 @@ def crear_formulario_bienes_servicios(registro_id):
         conn.commit()
         st.success("Formulario guardado")
 
+# MOSTRAR FORMULARIO SOLO SI ES SB
 if registro_sel:
     clasif = df_historial.loc[df_historial.id==registro_sel,"clasificacion"].values[0]
     if clasif == "SERVICIOS BASICOS":
