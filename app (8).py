@@ -239,62 +239,6 @@ datos_editados = st.data_editor(
     use_container_width=True,
     key=f"preview_{registro_sel}"
 )
-def generar_excel_unificado(vista_previa, formulario):
-    import pandas as pd
-    from io import BytesIO
-
-    buffer = BytesIO()
-
-    # 🔗 Unir datos
-    df_unificado = pd.concat(
-        [vista_previa.reset_index(drop=True),
-         formulario.reset_index(drop=True)],
-        axis=1
-    )
-
-    # 🏷 Renombrar columnas
-    df_unificado.rename(columns={
-        "institucion": "Institución",
-        "estructura_programatica": "Estructura Programática",
-        "numero_libramiento": "Número Libramiento",
-        "importe": "Importe",
-        "cuenta_objetal": "Cuenta Objetal"
-    }, inplace=True)
-
-    # ❌ Quitar columnas técnicas
-    df_unificado = df_unificado.drop(columns=["id", "registro_id"], errors="ignore")
-
-    # 💾 Crear Excel
-    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
-        df_unificado.to_excel(writer, index=False, sheet_name="Expediente Completo")
-
-    buffer.seek(0)
-    return buffer
-# 📄 Vista previa
-vista_previa = df_historial[df_historial.id == registro_sel][[
-    "institucion",
-    "estructura_programatica",
-    "numero_libramiento",
-    "importe",
-    "cuenta_objetal"
-]]
-
-# 📋 Formulario guardado
-formulario = pd.read_sql_query(
-    "SELECT * FROM formulario_bienes_servicios WHERE registro_id=?",
-    conn,
-    params=(registro_sel,)
-)
-
-excel_file = generar_excel_unificado(vista_previa, formulario)
-
-    
-st.download_button(
-    label="📥 Exportar expediente unificado",
-    data=excel_file,
-    file_name=f"Expediente_{registro_sel}.xlsx",
-    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-)
 
 # ================= FORMULARIO =================
 def crear_formulario_bienes_servicios(registro_id):
@@ -383,6 +327,7 @@ if registro_sel:
     clasif = df_historial.loc[df_historial.id==registro_sel,"clasificacion"].values[0]
     if clasif == "SERVICIOS BASICOS":
         crear_formulario_bienes_servicios(registro_sel)
+
 
 
 
