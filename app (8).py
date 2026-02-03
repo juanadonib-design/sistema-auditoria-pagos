@@ -4,6 +4,8 @@ import re
 import sqlite3
 import time
 import unicodedata
+from io import BytesIO
+
 
 st.set_page_config(page_title="Sistema Auditoría de Pagos", layout="wide")
 st.title("🧾 Sistema de Apoyo a la Auditoría de Pagos")
@@ -200,6 +202,38 @@ datos_editados = st.data_editor(
     use_container_width=True,
     key=f"preview_{registro_sel}"
 )
+# =========================================================
+# 📤 EXPORTAR EXPEDIENTE + FORMULARIO A EXCEL
+# =========================================================
+
+def generar_excel_expediente(registro_id):
+    buffer = BytesIO()
+
+    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+        # Hoja 1 — Datos del expediente
+        datos_exp.to_excel(writer, index=False, sheet_name="Expediente")
+
+        # Hoja 2 — Formulario Bienes y Servicios
+        df_form = pd.read_sql_query(
+            "SELECT * FROM formulario_bienes_servicios WHERE registro_id=?",
+            conn,
+            params=(registro_id,)
+        )
+
+        if not df_form.empty:
+            df_form.to_excel(writer, index=False, sheet_name="Bienes y Servicios")
+
+    buffer.seek(0)
+    return buffer
+
+excel_file = generar_excel_expediente(registro_sel)
+
+st.download_button(
+    label="📥 Exportar expediente completo a Excel",
+    data=excel_file,
+    file_name=f"expediente_{registro_sel}.xlsx",
+    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+)
 
 if st.button("💾 Guardar cambios de Cuenta Objetal"):
     nueva_cuenta = datos_editados["Cuenta Objetal"].iloc[0]
@@ -309,6 +343,7 @@ if registro_sel:
     clasif = df_historial.loc[df_historial.id==registro_sel,"clasificacion"].values[0]
     if clasif == "SERVICIOS BASICOS":
         crear_formulario_bienes_servicios(registro_sel)
+
 
 
 
