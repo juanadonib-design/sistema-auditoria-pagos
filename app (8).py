@@ -249,8 +249,7 @@ with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
         df_unificado.to_excel(writer, index=False, sheet_name="Expediente Completo")
 
 buffer.seek(0)
-    return buffer
-
+return buffer
 
 excel_file = generar_excel_unificado(registro_sel)
 
@@ -260,8 +259,6 @@ st.download_button(
     file_name=f"Expediente_{registro_sel}.xlsx",
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 )
-
-
 
 # ================= FORMULARIO =================
 def crear_formulario_bienes_servicios(registro_id):
@@ -350,6 +347,7 @@ if registro_sel:
     clasif = df_historial.loc[df_historial.id==registro_sel,"clasificacion"].values[0]
     if clasif == "SERVICIOS BASICOS":
         crear_formulario_bienes_servicios(registro_sel)
+
 
 
 
