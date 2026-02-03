@@ -245,7 +245,7 @@ def generar_excel_unificado(registro_id):
 df_unificado = df_unificado.drop(columns=["id", "registro_id"], errors="ignore")
 
     # 💾 Guardar en una sola hoja
-    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
         df_unificado.to_excel(writer, index=False, sheet_name="Expediente Completo")
 
     buffer.seek(0)
@@ -350,6 +350,7 @@ if registro_sel:
     clasif = df_historial.loc[df_historial.id==registro_sel,"clasificacion"].values[0]
     if clasif == "SERVICIOS BASICOS":
         crear_formulario_bienes_servicios(registro_sel)
+
 
 
 
