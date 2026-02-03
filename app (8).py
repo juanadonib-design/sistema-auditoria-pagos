@@ -149,45 +149,108 @@ if not df_historial.empty:
 
 # ================= FORMULARIO =================
 def crear_formulario_bienes_servicios(registro_id):
+    st.subheader("📋 FORMULARIO — SERVICIOS BÁSICOS")
 
-    df_rnc = pd.read_sql_query("SELECT rnc FROM registros WHERE id=?", conn, params=(registro_id,))
-    rnc = str(df_rnc.iloc[0]["rnc"]) if not df_rnc.empty else ""
+    conn = sqlite3.connect("auditoria.db")
 
-    columnas = ["CC","CP","OFI","FACT","FIRMA_DIGITAL","Recep","RPE","DGII","TSS","OC",
-                "CONT","TITULO","DETE","JURI_INMO","TASACION","APROB_PRESI","VIAJE_PRESI"]
+    columnas = ["CC","CP","OFI","FACT","FIRMA DIGITAL","Recep","RPE","DGII","TSS",
+                "OC","CONT.","TITULO","DETE","JURI INMO","TASACIÓN",
+                "APROB. PRESI","VIAJE PRESI"]
 
-    st.markdown('### 📋 Bienes y Servicios <span class="badge-en-uso">En uso</span>', unsafe_allow_html=True)
-
-    df_guardado = pd.read_sql_query(
-        "SELECT * FROM formulario_bienes_servicios WHERE registro_id=?", conn, params=(registro_id,)
+    # 🔹 Obtener RNC del expediente
+    rnc_df = pd.read_sql_query(
+        "SELECT rnc FROM registros WHERE id=?",
+        conn,
+        params=(registro_id,)
     )
 
+    if rnc_df.empty:
+        st.error("No se encontró el RNC del expediente")
+        return
+
+    rnc = str(rnc_df.iloc[0]["rnc"])
+
+    # 🔹 Buscar si ya existe formulario guardado
+    df_guardado = pd.read_sql_query(
+        "SELECT * FROM formulario_bienes_servicios WHERE registro_id=?",
+        conn,
+        params=(registro_id,)
+    )
+
+    # =====================================================
+    # 🎯 VALORES AUTOMÁTICOS SEGÚN CONDICIÓN
+    # =====================================================
     if df_guardado.empty:
-        df = pd.DataFrame([{col:"√" for col in columnas}])
+
+        base = {col: "N/A" for col in columnas}
+
+        # 🔵 CONDICIÓN 1 → RNC empieza por 1
+        if rnc.startswith("1"):
+            base.update({
+                "OFI": "√",
+                "FACT": "√",
+                "RPE": "√",
+                "DGII": "√",
+                "TSS": "√"
+            })
+
+        # 🟣 CONDICIÓN 2 → RNC empieza por 4
+        elif rnc.startswith("4"):
+            base.update({
+                "OFI": "√",
+                "FACT": "√"
+            })
+
+        df = pd.DataFrame([base])
+
     else:
         df = df_guardado[columnas]
 
-    config = {col: st.column_config.SelectboxColumn(options=["√","N/A"], width=65) for col in columnas}
+    # 🔹 Editor
+    config = {
+        col: st.column_config.SelectboxColumn(options=["√","N/A"])
+        for col in columnas
+    }
+
     df_editado = st.data_editor(df, column_config=config, hide_index=True)
 
-    if st.button("💾 Guardar Formulario"):
-        datos = df_editado.iloc[0].to_dict()
-        cursor.execute("""
-            INSERT INTO formulario_bienes_servicios
-            (registro_id, CC, CP, OFI, FACT, FIRMA_DIGITAL, Recep, RPE, DGII, TSS, OC, CONT, TITULO, DETE, JURI_INMO, TASACION, APROB_PRESI, VIAJE_PRESI)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-            ON CONFLICT(registro_id) DO UPDATE SET
-            CC=excluded.CC, CP=excluded.CP, OFI=excluded.OFI, FACT=excluded.FACT,
-            FIRMA_DIGITAL=excluded.FIRMA_DIGITAL, Recep=excluded.Recep, RPE=excluded.RPE,
-            DGII=excluded.DGII, TSS=excluded.TSS, OC=excluded.OC, CONT=excluded.CONT,
-            TITULO=excluded.TITULO, DETE=excluded.DETE, JURI_INMO=excluded.JURI_INMO,
-            TASACION=excluded.TASACION, APROB_PRESI=excluded.APROB_PRESI, VIAJE_PRESI=excluded.VIAJE_PRESI
-        """, (registro_id, *datos.values()))
-        conn.commit()
-        st.success("Formulario guardado")
+    # =====================================================
+    # 🔘 BOTONES AUTOMÁTICOS
+    # =====================================================
+
+    # Botón CC y CP (condición 1 y 2)
+    if rnc.startswith("1") or rnc.startswith("4"):
+        if st.button("✔ Marcar CC y CP"):
+            df_editado.loc[0, "CC"] = "√"
+            df_editado.loc[0, "CP"] = "√"
+            st.rerun()
+
+    # Botón DGII, TSS, RPE (solo condición 2)
+    if rnc.startswith("4"):
+        if st.button("✔ Marcar DGII, TSS y RPE"):
+            df_editado.loc[0, "DGII"] = "√"
+            df_editado.loc[0, "TSS"] = "√"
+            df_editado.loc[0, "RPE"] = "√"
+            st.rerun()
+
+    # 🔹 Guardar
+    if st.button("💾 Guardar formulario"):
+        df_editado["registro_id"] = registro_id
+
+        df_editado.to_sql(
+            "formulario_bienes_servicios",
+            conn,
+            if_exists="replace",
+            index=False
+        )
+
+        st.success("Formulario guardado correctamente")
+
+    conn.close()
 
 # MOSTRAR FORMULARIO SOLO SI ES SB
 if registro_sel:
     clasif = df_historial.loc[df_historial.id==registro_sel,"clasificacion"].values[0]
     if clasif == "SERVICIOS BASICOS":
         crear_formulario_bienes_servicios(registro_sel)
+
