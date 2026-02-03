@@ -50,7 +50,10 @@ if "rnc" not in columnas_existentes:
     cursor.execute("ALTER TABLE registros ADD COLUMN rnc TEXT")
     conn.commit()
     
-# 🔧 AGREGAR CUENTA OBJETAL SI NO EXISTE
+# 🔧 Si la BD es vieja y no tiene cuenta_objetal → la agrega
+cursor.execute("PRAGMA table_info(registros)")
+columnas_existentes = [col[1] for col in cursor.fetchall()]
+
 if "cuenta_objetal" not in columnas_existentes:
     cursor.execute("ALTER TABLE registros ADD COLUMN cuenta_objetal TEXT")
     conn.commit()
@@ -211,7 +214,13 @@ if st.button("💾 Guardar cambios de Cuenta Objetal"):
     st.rerun()
 
 # Obtener valor guardado si existe
-cuenta_actual = df_historial.loc[df_historial.id==registro_sel, "cuenta_objetal"].values[0]
+fila = df_historial.loc[df_historial.id == registro_sel]
+
+if not fila.empty:
+    cuenta_actual = fila["cuenta_objetal"].iloc[0] if "cuenta_objetal" in fila.columns else ""
+else:
+    cuenta_actual = ""
+
 
 cuenta_input = st.text_input(
     "Escriba la cuenta objetal del expediente",
@@ -318,6 +327,7 @@ if registro_sel:
     clasif = df_historial.loc[df_historial.id==registro_sel,"clasificacion"].values[0]
     if clasif == "SERVICIOS BASICOS":
         crear_formulario_bienes_servicios(registro_sel)
+
 
 
 
