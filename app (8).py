@@ -177,6 +177,26 @@ if not df_historial.empty:
             use_container_width=True,
             hide_index=True
         )
+        st.markdown("### ✍️ Cuenta Objetal")
+
+# Obtener valor guardado si existe
+cuenta_actual = df_historial.loc[df_historial.id==registro_sel, "cuenta_objetal"].values[0]
+
+cuenta_input = st.text_input(
+    "Escriba la cuenta objetal del expediente",
+    value=cuenta_actual if cuenta_actual else "",
+    key=f"cuenta_{registro_sel}"
+)
+
+if st.button("💾 Guardar Cuenta Objetal"):
+    cursor.execute(
+        "UPDATE registros SET cuenta_objetal=? WHERE id=?",
+        (cuenta_input, registro_sel)
+    )
+    conn.commit()
+    st.success("Cuenta objetal guardada correctamente")
+    st.rerun()
+
 
 
 
@@ -267,6 +287,7 @@ if registro_sel:
     clasif = df_historial.loc[df_historial.id==registro_sel,"clasificacion"].values[0]
     if clasif == "SERVICIOS BASICOS":
         crear_formulario_bienes_servicios(registro_sel)
+
 
 
 
