@@ -184,7 +184,6 @@ datos_exp = df_historial[df_historial.id == registro_sel][[
     "cuenta_objetal"
 ]]
 
-st.subheader("📄 Vista previa del expediente")
 # Renombrar columnas visualmente
 datos_exp.columns = [
     "Institución",
@@ -310,6 +309,7 @@ if registro_sel:
     clasif = df_historial.loc[df_historial.id==registro_sel,"clasificacion"].values[0]
     if clasif == "SERVICIOS BASICOS":
         crear_formulario_bienes_servicios(registro_sel)
+
 
 
 
