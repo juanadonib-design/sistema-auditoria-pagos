@@ -221,17 +221,6 @@ if not fila.empty:
 else:
     cuenta_actual = ""
 
-if st.button("💾 Guardar Cuenta Objetal"):
-    cursor.execute(
-        "UPDATE registros SET cuenta_objetal=? WHERE id=?",
-        (cuenta_input, registro_sel)
-    )
-    conn.commit()
-    st.success("Cuenta objetal guardada correctamente")
-    st.rerun()
-
-
-
 
 # ================= FORMULARIO =================
 def crear_formulario_bienes_servicios(registro_id):
@@ -320,6 +309,7 @@ if registro_sel:
     clasif = df_historial.loc[df_historial.id==registro_sel,"clasificacion"].values[0]
     if clasif == "SERVICIOS BASICOS":
         crear_formulario_bienes_servicios(registro_sel)
+
 
 
 
