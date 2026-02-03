@@ -171,13 +171,44 @@ if not df_historial.empty:
             "🧾 Cuenta Objetal"
         ]
 
-        st.markdown("### 📂 Vista previa del expediente")
-        st.dataframe(
-            datos_exp,
-            use_container_width=True,
-            hide_index=True
-        )
-        st.markdown("### ✍️ Cuenta Objetal")
+        st.markdown("### 📄 Vista previa del expediente")
+
+datos_exp = df_historial[df_historial.id == registro_sel][[
+    "institucion",
+    "estructura_programatica",
+    "numero_libramiento",
+    "importe",
+    "cuenta_objetal"
+]]
+
+# Renombrar columnas visualmente
+datos_exp.columns = [
+    "Institución",
+    "Estructura Programática",
+    "Número Libramiento",
+    "Importe",
+    "Cuenta Objetal"
+]
+
+# 🔥 TABLA EDITABLE SOLO PARA CUENTA OBJETAL
+datos_editados = st.data_editor(
+    datos_exp,
+    disabled=["Institución","Estructura Programática","Número Libramiento","Importe"],
+    use_container_width=True,
+    key=f"preview_{registro_sel}"
+)
+
+if st.button("💾 Guardar cambios de Cuenta Objetal"):
+    nueva_cuenta = datos_editados["Cuenta Objetal"].iloc[0]
+
+    cursor.execute(
+        "UPDATE registros SET cuenta_objetal=? WHERE id=?",
+        (nueva_cuenta, registro_sel)
+    )
+    conn.commit()
+
+    st.success("Cuenta Objetal actualizada correctamente")
+    st.rerun()
 
 # Obtener valor guardado si existe
 cuenta_actual = df_historial.loc[df_historial.id==registro_sel, "cuenta_objetal"].values[0]
@@ -287,6 +318,7 @@ if registro_sel:
     clasif = df_historial.loc[df_historial.id==registro_sel,"clasificacion"].values[0]
     if clasif == "SERVICIOS BASICOS":
         crear_formulario_bienes_servicios(registro_sel)
+
 
 
 
