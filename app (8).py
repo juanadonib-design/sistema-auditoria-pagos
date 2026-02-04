@@ -39,6 +39,8 @@ st.markdown("""
 conn = sqlite3.connect("auditoria.db", check_same_thread=False)
 conn.execute("PRAGMA foreign_keys = ON")
 cursor = conn.cursor()
+st.write("Usuarios en BD:")
+st.write(pd.read_sql_query("SELECT * FROM usuarios", conn))
 
 # 🔧 CREAR TABLA
 cursor.execute("""
@@ -452,6 +454,7 @@ if st.button("📥 Exportar TODOS los expedientes a Excel"):
         file_name="Auditoria_Completa.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
 
 
 
