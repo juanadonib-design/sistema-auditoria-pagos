@@ -357,8 +357,8 @@ def crear_formulario_bienes_servicios(registro_id):
         
         # ✅ MARCAR EXPEDIENTE COMO COMPLETADO
         cursor.execute(
-    "UPDATE registros SET estado='Completado' WHERE id=?",
-    (registro_id,)
+            "UPDATE registros SET estado='Completado' WHERE id=?",
+            (registro_id,)
 )
 conn.commit()
 
@@ -410,5 +410,6 @@ if st.button("📥 Exportar TODOS los expedientes a Excel"):
         file_name="Auditoria_Completa.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
 
 
