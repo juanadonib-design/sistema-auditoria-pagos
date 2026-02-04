@@ -41,6 +41,9 @@ conn.execute("PRAGMA foreign_keys = ON")
 cursor = conn.cursor()
 st.write("Usuarios en BD:")
 st.write(pd.read_sql_query("SELECT * FROM usuarios", conn))
+cursor.execute("DELETE FROM usuarios")
+conn.commit()
+st.success("Tabla usuarios limpiada")
 
 # 🔧 CREAR TABLA
 cursor.execute("""
@@ -454,6 +457,7 @@ if st.button("📥 Exportar TODOS los expedientes a Excel"):
         file_name="Auditoria_Completa.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
 
 
 
