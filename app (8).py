@@ -7,6 +7,9 @@ import unicodedata
 from io import BytesIO
 import hashlib
 
+if "pantalla" not in st.session_state:
+    st.session_state.pantalla = "login"
+
 def encriptar_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
 
@@ -100,12 +103,12 @@ conn.commit()
 # ================= LOGIN =================
 if "usuario_id" not in st.session_state and st.session_state.pantalla == "login":
 
-    st.subheader("🔐 Iniciar Sesión")
+    st.title("🔐 Iniciar sesión")
 
     user = st.text_input("Usuario")
     pwd = st.text_input("Contraseña", type="password")
 
-    if st.button("Entrar"):
+    if st.button("Ingresar"):
         u = cursor.execute(
             "SELECT id FROM usuarios WHERE usuario=? AND password=?",
             (user, encriptar_password(pwd))
@@ -113,20 +116,20 @@ if "usuario_id" not in st.session_state and st.session_state.pantalla == "login"
 
         if u:
             st.session_state.usuario_id = u[0]
-            st.success("Bienvenido")
             st.rerun()
         else:
-            st.error("Credenciales incorrectas")
+            st.error("Datos incorrectos")
 
-    st.markdown("---")
-    if st.button("🆕 Registrarse"):
+    # BOTÓN PEQUEÑO
+    if st.button("¿No tienes cuenta? Regístrate"):
         st.session_state.pantalla = "registro"
         st.rerun()
 
-    st.stop()
+    st.stop()   # 🔥 ESTO BLOQUEA QUE ENTRE AL SISTEMA
 
     if "usuario_id" not in st.session_state and st.session_state.pantalla == "registro":
-        st.subheader("🆕 Crear cuenta")
+
+    st.subheader("🆕 Crear cuenta")
 
     nuevo_nombre = st.text_input("Nombre completo")
     nuevo_user = st.text_input("Usuario")
@@ -139,7 +142,11 @@ if "usuario_id" not in st.session_state and st.session_state.pantalla == "login"
                 (nuevo_nombre, nuevo_user, encriptar_password(nuevo_pwd))
             )
             conn.commit()
-            st.success("Cuenta creada. Ahora inicia sesión 👇")
+
+            st.success("Cuenta creada. Ahora inicia sesión")
+            st.session_state.pantalla = "login"   # 🔥 LO MANDA AL LOGIN, NO AL SISTEMA
+            st.rerun()
+
         except:
             st.error("Ese usuario ya existe")
 
@@ -147,7 +154,8 @@ if "usuario_id" not in st.session_state and st.session_state.pantalla == "login"
         st.session_state.pantalla = "login"
         st.rerun()
 
-    st.stop()
+    st.stop()   # 🔥 ESTO IMPIDE QUE BAJE AL SISTEMA
+
 
     
 # ================= EXTRACCIÓN =================
@@ -447,6 +455,7 @@ if st.button("📥 Exportar TODOS los expedientes a Excel"):
         file_name="Auditoria_Completa.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
 
 
 
