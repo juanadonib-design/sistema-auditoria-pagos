@@ -39,11 +39,6 @@ st.markdown("""
 conn = sqlite3.connect("auditoria.db", check_same_thread=False)
 conn.execute("PRAGMA foreign_keys = ON")
 cursor = conn.cursor()
-st.write("Usuarios en BD:")
-st.write(pd.read_sql_query("SELECT * FROM usuarios", conn))
-cursor.execute("DELETE FROM usuarios")
-conn.commit()
-st.success("Tabla usuarios limpiada")
 
 # 🔧 CREAR TABLA
 cursor.execute("""
@@ -144,24 +139,33 @@ if "usuario_id" not in st.session_state and st.session_state.pantalla == "regist
     nuevo_pwd = st.text_input("Contraseña", type="password")
 
     if st.button("➕ Crear cuenta"):
-        try:
+
+    # 1️⃣ Verificar campos vacíos
+    if not nuevo_nombre or not nuevo_user or not nuevo_pwd:
+        st.error("Todos los campos son obligatorios")
+
+    else:
+        # 2️⃣ Verificar si ya existe
+        existe = cursor.execute(
+            "SELECT id FROM usuarios WHERE usuario=?",
+            (nuevo_user,)
+        ).fetchone()
+
+        if existe:
+            st.error("Ese usuario ya existe")
+
+        else:
+            # 3️⃣ Guardar usuario encriptado
             cursor.execute(
                 "INSERT INTO usuarios (nombre, usuario, password) VALUES (?, ?, ?)",
                 (nuevo_nombre, nuevo_user, encriptar_password(nuevo_pwd))
             )
             conn.commit()
 
-            st.success("Cuenta creada. Ahora inicia sesión")
+            st.success("Cuenta creada correctamente")
             st.session_state.pantalla = "login"
             st.rerun()
-
-        except:
-            st.error("Ese usuario ya existe")
-
-    if st.button("⬅ Volver al login"):
-        st.session_state.pantalla = "login"
-        st.rerun()
-
+            
     st.stop()
 
 # ================= EXTRACCIÓN =================
@@ -457,6 +461,7 @@ if st.button("📥 Exportar TODOS los expedientes a Excel"):
         file_name="Auditoria_Completa.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
 
 
 
