@@ -233,18 +233,6 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 st.markdown("---")
 st.subheader("📊 Historial")
 
-registro_sel = None
-
-df_historial = pd.read_sql_query(...)
-
-st.dataframe(
-    df_historial.style.applymap(colorear_estado, subset=["estado"]),
-    use_container_width=True
-)
-
-if not df_historial.empty:
-    registro_sel = st.selectbox(...)
-
 def colorear_estado(val):
     if val == "En proceso":
         return "background-color:#ffe5e5; color:red; font-weight:bold"
@@ -252,7 +240,8 @@ def colorear_estado(val):
         return "background-color:#e6ffe6; color:green; font-weight:bold"
     return ""
 
-# 🔹 PRIMERO se crea el dataframe
+registro_sel = None
+
 df_historial = pd.read_sql_query("""
 SELECT 
     id,
@@ -268,67 +257,59 @@ WHERE usuario_id = ?
 ORDER BY id DESC
 """, conn, params=(st.session_state.usuario_id,))
 
-# 🔹 LUEGO se muestra
-if not df_historial.empty:
+if df_historial.empty:
+    st.info("No hay expedientes registrados todavía.")
+else:
     st.dataframe(
         df_historial.style.applymap(colorear_estado, subset=["estado"]),
         use_container_width=True
     )
-else:
-    st.info("No hay expedientes registrados todavía.")
 
+    registro_sel = st.selectbox(
+        "📌 Seleccione expediente",
+        df_historial["id"],
+        format_func=lambda x: f"#{x} — {df_historial.loc[df_historial.id==x,'institucion'].values[0]}"
+    )
 
-    # 🗑 BORRADO PERMANENTE
+    # 🗑 BORRAR
     if st.button("🗑️ Borrar expediente seleccionado"):
-        cursor.execute("DELETE FROM registros WHERE id = ?", (registro_sel,))
+        cursor.execute("DELETE FROM registros WHERE id=?", (registro_sel,))
         conn.commit()
-        st.warning("Expediente eliminado permanentemente")
+        st.warning("Expediente eliminado")
         time.sleep(1)
         st.rerun()
-        # ================= VISTA PREVIA TIPO EXCEL =================
-    if registro_sel:
-        datos_exp = df_historial[df_historial.id == registro_sel][[
-            "institucion",
-            "estructura_programatica",
-            "numero_libramiento",
-            "importe",
-            "cuenta_objetal"
-        ]]
 
-        datos_exp.columns = [
-            "🏢 Institución",
-            "📊 Estructura Programática",
-            "📄 Número Libramiento",
-            "💰 Importe",
-            "🧾 Cuenta Objetal"
-        ]
+    # ================= VISTA PREVIA =================
+    datos_exp = df_historial[df_historial.id == registro_sel][[
+        "institucion",
+        "estructura_programatica",
+        "numero_libramiento",
+        "importe",
+        "cuenta_objetal"
+    ]]
 
-        st.markdown("### 📄 Vista previa del expediente")
+    datos_exp.columns = [
+        "Institución",
+        "Estructura Programática",
+        "Número Libramiento",
+        "Importe",
+        "Cuenta Objetal"
+    ]
 
-datos_exp = df_historial[df_historial.id == registro_sel][[
-    "institucion",
-    "estructura_programatica",
-    "numero_libramiento",
-    "importe",
-    "cuenta_objetal"
-]]
+    st.markdown("### 📄 Vista previa del expediente")
 
-# Renombrar columnas visualmente
-datos_exp.columns = [
-    "Institución",
-    "Estructura Programática",
-    "Número Libramiento",
-    "Importe",
-    "Cuenta Objetal"
-]
+    datos_editados = st.data_editor(
+        datos_exp,
+        disabled=["Institución","Estructura Programática","Número Libramiento","Importe"],
+        use_container_width=True,
+        key=f"preview_{registro_sel}"
+    )
 
-# 🔥 TABLA EDITABLE SOLO PARA CUENTA OBJETAL
-datos_editados = st.data_editor(
-    datos_exp,
-    disabled=["Institución","Estructura Programática","Número Libramiento","Importe"],
-    use_container_width=True,
-    key=f"preview_{registro_sel}"
-)
+    # guardar edición de cuenta objetal
+    nueva_cuenta = datos_editados.iloc[0]["Cuenta Objetal"]
+    cursor.execute("UPDATE registros SET cuenta_objetal=? WHERE id=?", (nueva_cuenta, registro_sel))
+    conn.commit()
+
 
 # ================= FORMULARIO =================
 def crear_formulario_bienes_servicios(registro_id):
@@ -467,5 +448,6 @@ if st.button("📥 Exportar TODOS los expedientes a Excel"):
         file_name="Auditoria_Completa.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
 
 
