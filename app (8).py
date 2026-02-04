@@ -12,6 +12,8 @@ def encriptar_password(password):
 
 st.set_page_config(page_title="Sistema Auditoría de Pagos", layout="wide")
 st.title("🧾 Sistema de Apoyo a la Auditoría de Pagos")
+if "pantalla" not in st.session_state:
+    st.session_state.pantalla = "login"
 
 # 🔵 CSS
 st.markdown("""
@@ -96,30 +98,14 @@ CREATE TABLE IF NOT EXISTS formulario_bienes_servicios (
 """)
 conn.commit()
 # ================= LOGIN =================
-if "usuario_id" not in st.session_state:
+if "usuario_id" not in st.session_state and st.session_state.pantalla == "login":
+
     st.subheader("🔐 Iniciar Sesión")
 
     user = st.text_input("Usuario")
     pwd = st.text_input("Contraseña", type="password")
 
     if st.button("Entrar"):
-            st.markdown("### 🆕 Crear usuario nuevo")
-
-    nuevo_nombre = st.text_input("Nombre completo")
-    nuevo_user = st.text_input("Nuevo usuario")
-    nuevo_pwd = st.text_input("Nueva contraseña", type="password")
-
-    if st.button("➕ Registrar usuario"):
-        try:
-            cursor.execute(
-                "INSERT INTO usuarios (nombre, usuario, password) VALUES (?, ?, ?)",
-                (nuevo_nombre, nuevo_user, encriptar_password(nuevo_pwd))
-            )
-            conn.commit()
-            st.success("Usuario creado correctamente")
-        except:
-            st.error("Ese usuario ya existe")
-
         u = cursor.execute(
             "SELECT id FROM usuarios WHERE usuario=? AND password=?",
             (user, encriptar_password(pwd))
@@ -132,7 +118,38 @@ if "usuario_id" not in st.session_state:
         else:
             st.error("Credenciales incorrectas")
 
+    st.markdown("---")
+    if st.button("🆕 Registrarse"):
+        st.session_state.pantalla = "registro"
+        st.rerun()
+
     st.stop()
+
+    if "usuario_id" not in st.session_state and st.session_state.pantalla == "registro":
+
+    st.subheader("🆕 Crear cuenta")
+
+    nuevo_nombre = st.text_input("Nombre completo")
+    nuevo_user = st.text_input("Usuario")
+    nuevo_pwd = st.text_input("Contraseña", type="password")
+
+    if st.button("➕ Crear cuenta"):
+        try:
+            cursor.execute(
+                "INSERT INTO usuarios (nombre, usuario, password) VALUES (?, ?, ?)",
+                (nuevo_nombre, nuevo_user, encriptar_password(nuevo_pwd))
+            )
+            conn.commit()
+            st.success("Cuenta creada. Ahora inicia sesión 👇")
+        except:
+            st.error("Ese usuario ya existe")
+
+    if st.button("⬅ Volver al login"):
+        st.session_state.pantalla = "login"
+        st.rerun()
+
+    st.stop()
+
     
 # ================= EXTRACCIÓN =================
 def extraer_datos(texto):
@@ -431,6 +448,7 @@ if st.button("📥 Exportar TODOS los expedientes a Excel"):
         file_name="Auditoria_Completa.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
 
 
 
