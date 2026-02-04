@@ -27,6 +27,28 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# ================= LOGIN =================
+if "usuario_id" not in st.session_state:
+    st.subheader("🔐 Iniciar Sesión")
+
+    user = st.text_input("Usuario")
+    pwd = st.text_input("Contraseña", type="password")
+
+    if st.button("Entrar"):
+        u = cursor.execute(
+            "SELECT id FROM usuarios WHERE usuario=? AND password=?",
+            (user, pwd)
+        ).fetchone()
+
+        if u:
+            st.session_state.usuario_id = u[0]
+            st.success("Bienvenido")
+            st.rerun()
+        else:
+            st.error("Credenciales incorrectas")
+
+    st.stop()
+
 # ================= BASE DE DATOS =================
 conn = sqlite3.connect("auditoria.db", check_same_thread=False)
 conn.execute("PRAGMA foreign_keys = ON")
@@ -44,6 +66,15 @@ CREATE TABLE IF NOT EXISTS registros (
     rnc TEXT
 )
 """)
+# 🔐 TABLA DE USUARIOS
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS usuarios (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nombre TEXT,
+    usuario TEXT UNIQUE,
+    password TEXT
+)
+""")
 
 # 🔧 SI LA TABLA ES VIEJA Y NO TIENE RNC → LA AGREGA
 cursor.execute("PRAGMA table_info(registros)")
@@ -59,7 +90,18 @@ columnas_existentes = [col[1] for col in cursor.fetchall()]
 if "cuenta_objetal" not in columnas_existentes:
     cursor.execute("ALTER TABLE registros ADD COLUMN cuenta_objetal TEXT")
     conn.commit()
-
+    
+# 🔗 Relacionar registros con usuario
+cursor.execute("PRAGMA table_info(registros)")
+cols = [c[1] for c in cursor.fetchall()]
+if "usuario_id" not in cols:
+    cursor.execute("ALTER TABLE registros ADD COLUMN usuario_id INTEGER")
+    conn.commit()
+    
+if "estado" not in columnas_existentes:
+    cursor.execute("ALTER TABLE registros ADD COLUMN estado TEXT DEFAULT 'En proceso'")
+    conn.commit()
+    
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS formulario_bienes_servicios (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -121,18 +163,22 @@ cuenta_objetal_manual = st.text_input("🏷️ Cuenta Objetal (llenado manual po
 if st.button("📤 Enviar al Historial"):
     nuevo_registro = extraer_datos(texto_pegado)
 
-    cursor.execute("""
-        INSERT INTO registros (institucion, estructura_programatica, numero_libramiento, importe, clasificacion, rnc, cuenta_objetal) 
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-    """, (
-        nuevo_registro["institucion"],
-        nuevo_registro["estructura_programatica"],
-        nuevo_registro["numero_libramiento"],
-        nuevo_registro["importe"],
-        nuevo_registro["clasificacion"],
-        nuevo_registro["rnc"],
-        cuenta_objetal_manual
-    ))
+    ccursor.execute("""
+INSERT INTO registros (
+    institucion, estructura_programatica, numero_libramiento,
+    importe, clasificacion, rnc, cuenta_objetal, usuario_id
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+""", (
+    nuevo_registro["institucion"],
+    nuevo_registro["estructura_programatica"],
+    nuevo_registro["numero_libramiento"],
+    nuevo_registro["importe"],
+    nuevo_registro["clasificacion"],
+    nuevo_registro["rnc"],
+    cuenta_objetal_manual,
+    st.session_state.usuario_id
+))
     conn.commit()
 
     st.success("Registro guardado")
@@ -141,7 +187,11 @@ if st.button("📤 Enviar al Historial"):
 # ================= HISTORIAL =================
 st.markdown("---")
 st.subheader("📊 Historial")
-df_historial = pd.read_sql_query("SELECT * FROM registros ORDER BY id DESC", conn)
+df_historial = pd.read_sql_query("""
+SELECT * FROM registros
+WHERE usuario_id = ?
+ORDER BY id DESC
+""", conn, params=(st.session_state.usuario_id,))
 
 registro_sel = None
 if not df_historial.empty:
@@ -283,6 +333,14 @@ def crear_formulario_bienes_servicios(registro_id):
         """, (registro_id, *datos.values()))
 
         conn.commit()
+        
+        # ✅ MARCAR EXPEDIENTE COMO COMPLETADO
+cursor.execute(
+    "UPDATE registros SET estado='Completado' WHERE id=?",
+    (registro_id,)
+)
+conn.commit()
+
         st.success("Formulario guardado correctamente")
 
 # MOSTRAR FORMULARIO SOLO SI ES SB
@@ -331,3 +389,4 @@ if st.button("📥 Exportar TODOS los expedientes a Excel"):
         file_name="Auditoria_Completa.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
