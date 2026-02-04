@@ -27,28 +27,6 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# ================= LOGIN =================
-if "usuario_id" not in st.session_state:
-    st.subheader("🔐 Iniciar Sesión")
-
-    user = st.text_input("Usuario")
-    pwd = st.text_input("Contraseña", type="password")
-
-    if st.button("Entrar"):
-        u = cursor.execute(
-            "SELECT id FROM usuarios WHERE usuario=? AND password=?",
-            (user, pwd)
-        ).fetchone()
-
-        if u:
-            st.session_state.usuario_id = u[0]
-            st.success("Bienvenido")
-            st.rerun()
-        else:
-            st.error("Credenciales incorrectas")
-
-    st.stop()
-
 # ================= BASE DE DATOS =================
 conn = sqlite3.connect("auditoria.db", check_same_thread=False)
 conn.execute("PRAGMA foreign_keys = ON")
@@ -94,6 +72,7 @@ if "cuenta_objetal" not in columnas_existentes:
 # 🔗 Relacionar registros con usuario
 cursor.execute("PRAGMA table_info(registros)")
 cols = [c[1] for c in cursor.fetchall()]
+
 if "usuario_id" not in cols:
     cursor.execute("ALTER TABLE registros ADD COLUMN usuario_id INTEGER")
     conn.commit()
@@ -113,7 +92,28 @@ CREATE TABLE IF NOT EXISTS formulario_bienes_servicios (
 )
 """)
 conn.commit()
+# ================= LOGIN =================
+if "usuario_id" not in st.session_state:
+    st.subheader("🔐 Iniciar Sesión")
 
+    user = st.text_input("Usuario")
+    pwd = st.text_input("Contraseña", type="password")
+
+    if st.button("Entrar"):
+        u = cursor.execute(
+            "SELECT id FROM usuarios WHERE usuario=? AND password=?",
+            (user, pwd)
+        ).fetchone()
+
+        if u:
+            st.session_state.usuario_id = u[0]
+            st.success("Bienvenido")
+            st.rerun()
+        else:
+            st.error("Credenciales incorrectas")
+
+    st.stop()
+    
 # ================= EXTRACCIÓN =================
 def extraer_datos(texto):
     lineas = [l.strip() for l in texto.split('\n') if l.strip()]
@@ -163,7 +163,7 @@ cuenta_objetal_manual = st.text_input("🏷️ Cuenta Objetal (llenado manual po
 if st.button("📤 Enviar al Historial"):
     nuevo_registro = extraer_datos(texto_pegado)
 
-    ccursor.execute("""
+    cursor.execute("""
 INSERT INTO registros (
     institucion, estructura_programatica, numero_libramiento,
     importe, clasificacion, rnc, cuenta_objetal, usuario_id
@@ -187,8 +187,29 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 # ================= HISTORIAL =================
 st.markdown("---")
 st.subheader("📊 Historial")
+def colorear_estado(val):
+    if val == "En proceso":
+        return "background-color:#ffe5e5; color:red; font-weight:bold"
+    elif val == "Completado":
+        return "background-color:#e6ffe6; color:green; font-weight:bold"
+    return ""
+    
+st.dataframe(
+    df_historial.style.applymap(colorear_estado, subset=["estado"]),
+    use_container_width=True
+)
+
 df_historial = pd.read_sql_query("""
-SELECT * FROM registros
+SELECT 
+    id,
+    institucion,
+    numero_libramiento,
+    estructura_programatica,
+    importe,
+    cuenta_objetal,
+    clasificacion,
+    estado
+FROM registros
 WHERE usuario_id = ?
 ORDER BY id DESC
 """, conn, params=(st.session_state.usuario_id,))
@@ -335,7 +356,7 @@ def crear_formulario_bienes_servicios(registro_id):
         conn.commit()
         
         # ✅ MARCAR EXPEDIENTE COMO COMPLETADO
-cursor.execute(
+        cursor.execute(
     "UPDATE registros SET estado='Completado' WHERE id=?",
     (registro_id,)
 )
@@ -389,4 +410,5 @@ if st.button("📥 Exportar TODOS los expedientes a Excel"):
         file_name="Auditoria_Completa.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
 
