@@ -100,7 +100,9 @@ CREATE TABLE IF NOT EXISTS formulario_bienes_servicios (
 )
 """)
 conn.commit()
-# ================= LOGIN =================
+# ================= LOGIN / REGISTRO =================
+
+# ---------- LOGIN ----------
 if "usuario_id" not in st.session_state and st.session_state.pantalla == "login":
 
     st.title("🔐 Iniciar sesión")
@@ -120,14 +122,15 @@ if "usuario_id" not in st.session_state and st.session_state.pantalla == "login"
         else:
             st.error("Datos incorrectos")
 
-    # BOTÓN PEQUEÑO
     if st.button("¿No tienes cuenta? Regístrate"):
         st.session_state.pantalla = "registro"
         st.rerun()
 
-    st.stop()   # 🔥 ESTO BLOQUEA QUE ENTRE AL SISTEMA
+    st.stop()
 
-    if "usuario_id" not in st.session_state and st.session_state.pantalla == "registro":
+
+# ---------- REGISTRO ----------
+if "usuario_id" not in st.session_state and st.session_state.pantalla == "registro":
 
     st.subheader("🆕 Crear cuenta")
 
@@ -144,7 +147,7 @@ if "usuario_id" not in st.session_state and st.session_state.pantalla == "login"
             conn.commit()
 
             st.success("Cuenta creada. Ahora inicia sesión")
-            st.session_state.pantalla = "login"   # 🔥 LO MANDA AL LOGIN, NO AL SISTEMA
+            st.session_state.pantalla = "login"
             st.rerun()
 
         except:
@@ -154,10 +157,8 @@ if "usuario_id" not in st.session_state and st.session_state.pantalla == "login"
         st.session_state.pantalla = "login"
         st.rerun()
 
-    st.stop()   # 🔥 ESTO IMPIDE QUE BAJE AL SISTEMA
+    st.stop()
 
-
-    
 # ================= EXTRACCIÓN =================
 def extraer_datos(texto):
     lineas = [l.strip() for l in texto.split('\n') if l.strip()]
@@ -455,11 +456,3 @@ if st.button("📥 Exportar TODOS los expedientes a Excel"):
         file_name="Auditoria_Completa.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
-
-
-
-
-
-
-
-
