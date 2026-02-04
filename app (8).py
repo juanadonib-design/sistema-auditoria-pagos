@@ -5,7 +5,10 @@ import sqlite3
 import time
 import unicodedata
 from io import BytesIO
+import hashlib
 
+def encriptar_password(password):
+    return hashlib.sha256(password.encode()).hexdigest()
 
 st.set_page_config(page_title="Sistema Auditoría de Pagos", layout="wide")
 st.title("🧾 Sistema de Apoyo a la Auditoría de Pagos")
@@ -100,9 +103,26 @@ if "usuario_id" not in st.session_state:
     pwd = st.text_input("Contraseña", type="password")
 
     if st.button("Entrar"):
+            st.markdown("### 🆕 Crear usuario nuevo")
+
+    nuevo_nombre = st.text_input("Nombre completo")
+    nuevo_user = st.text_input("Nuevo usuario")
+    nuevo_pwd = st.text_input("Nueva contraseña", type="password")
+
+    if st.button("➕ Registrar usuario"):
+        try:
+            cursor.execute(
+                "INSERT INTO usuarios (nombre, usuario, password) VALUES (?, ?, ?)",
+                (nuevo_nombre, nuevo_user, encriptar_password(nuevo_pwd))
+            )
+            conn.commit()
+            st.success("Usuario creado correctamente")
+        except:
+            st.error("Ese usuario ya existe")
+
         u = cursor.execute(
             "SELECT id FROM usuarios WHERE usuario=? AND password=?",
-            (user, pwd)
+            (user, encriptar_password(pwd))
         ).fetchone()
 
         if u:
@@ -411,6 +431,7 @@ if st.button("📥 Exportar TODOS los expedientes a Excel"):
         file_name="Auditoria_Completa.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
 
 
 
