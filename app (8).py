@@ -126,16 +126,6 @@ if "usuario_id" not in st.session_state and st.session_state.pantalla == "login"
 
     st.stop()
 
-
-# ---------- REGISTRO ----------
-if "usuario_id" not in st.session_state and st.session_state.pantalla == "registro":
-
-    st.subheader("🆕 Crear cuenta")
-
-    nuevo_nombre = st.text_input("Nombre completo")
-    nuevo_user = st.text_input("Usuario")
-    nuevo_pwd = st.text_input("Contraseña", type="password")
-
     # ---------- REGISTRO ----------
 if "usuario_id" not in st.session_state and st.session_state.pantalla == "registro":
 
@@ -472,5 +462,6 @@ if st.button("📥 Exportar TODOS los expedientes a Excel"):
         file_name="Auditoria_Completa.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
 
 
