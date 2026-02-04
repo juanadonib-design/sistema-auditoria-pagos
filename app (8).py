@@ -304,12 +304,7 @@ else:
         use_container_width=True,
         key=f"preview_{registro_sel}"
     )
-    if st.button("💾 Guardar Cuenta Objetal"):
-    nueva_cuenta = datos_editados.iloc[0]["Cuenta Objetal"]
-    cursor.execute(
-        "UPDATE registros SET cuenta_objetal=? WHERE id=?",
-        (nueva_cuenta, registro_sel)
-    )
+   
     conn.commit()
     st.success("Cuenta objetal actualizada")
 
@@ -457,6 +452,7 @@ if st.button("📥 Exportar TODOS los expedientes a Excel"):
         file_name="Auditoria_Completa.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
 
 
 
