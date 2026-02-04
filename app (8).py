@@ -233,6 +233,18 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 st.markdown("---")
 st.subheader("📊 Historial")
 
+registro_sel = None
+
+df_historial = pd.read_sql_query(...)
+
+st.dataframe(
+    df_historial.style.applymap(colorear_estado, subset=["estado"]),
+    use_container_width=True
+)
+
+if not df_historial.empty:
+    registro_sel = st.selectbox(...)
+
 def colorear_estado(val):
     if val == "En proceso":
         return "background-color:#ffe5e5; color:red; font-weight:bold"
@@ -455,4 +467,5 @@ if st.button("📥 Exportar TODOS los expedientes a Excel"):
         file_name="Auditoria_Completa.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
 
