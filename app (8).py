@@ -15,8 +15,6 @@ def encriptar_password(password):
 
 st.set_page_config(page_title="Sistema Auditoría de Pagos", layout="wide")
 st.title("🧾 Sistema de Apoyo a la Auditoría de Pagos")
-if "pantalla" not in st.session_state:
-    st.session_state.pantalla = "login"
 
 # 🔵 CSS
 st.markdown("""
@@ -474,3 +472,4 @@ if st.button("📥 Exportar TODOS los expedientes a Excel"):
         file_name="Auditoria_Completa.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
