@@ -232,18 +232,15 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 # ================= HISTORIAL =================
 st.markdown("---")
 st.subheader("📊 Historial")
+
 def colorear_estado(val):
     if val == "En proceso":
         return "background-color:#ffe5e5; color:red; font-weight:bold"
     elif val == "Completado":
         return "background-color:#e6ffe6; color:green; font-weight:bold"
     return ""
-    
-st.dataframe(
-    df_historial.style.applymap(colorear_estado, subset=["estado"]),
-    use_container_width=True
-)
 
+# 🔹 PRIMERO se crea el dataframe
 df_historial = pd.read_sql_query("""
 SELECT 
     id,
@@ -259,13 +256,15 @@ WHERE usuario_id = ?
 ORDER BY id DESC
 """, conn, params=(st.session_state.usuario_id,))
 
-registro_sel = None
+# 🔹 LUEGO se muestra
 if not df_historial.empty:
-    registro_sel = st.selectbox(
-        "📌 Seleccione expediente",
-        df_historial["id"],
-        format_func=lambda x: f"#{x} — {df_historial.loc[df_historial.id==x,'institucion'].values[0]}"
+    st.dataframe(
+        df_historial.style.applymap(colorear_estado, subset=["estado"]),
+        use_container_width=True
     )
+else:
+    st.info("No hay expedientes registrados todavía.")
+
 
     # 🗑 BORRADO PERMANENTE
     if st.button("🗑️ Borrar expediente seleccionado"):
@@ -456,3 +455,4 @@ if st.button("📥 Exportar TODOS los expedientes a Excel"):
         file_name="Auditoria_Completa.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
