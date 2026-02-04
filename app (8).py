@@ -138,36 +138,49 @@ if "usuario_id" not in st.session_state and st.session_state.pantalla == "regist
     nuevo_user = st.text_input("Usuario")
     nuevo_pwd = st.text_input("Contraseña", type="password")
 
+    # ---------- REGISTRO ----------
+if "usuario_id" not in st.session_state and st.session_state.pantalla == "registro":
+
+    st.subheader("🆕 Crear cuenta")
+
+    nuevo_nombre = st.text_input("Nombre completo")
+    nuevo_user = st.text_input("Usuario")
+    nuevo_pwd = st.text_input("Contraseña", type="password")
+
     if st.button("➕ Crear cuenta"):
 
-    # 1️⃣ Verificar campos vacíos
-    if not nuevo_nombre or not nuevo_user or not nuevo_pwd:
-        st.error("Todos los campos son obligatorios")
-
-    else:
-        # 2️⃣ Verificar si ya existe
-        existe = cursor.execute(
-            "SELECT id FROM usuarios WHERE usuario=?",
-            (nuevo_user,)
-        ).fetchone()
-
-        if existe:
-            st.error("Ese usuario ya existe")
+        # 1️⃣ Verificar campos vacíos
+        if not nuevo_nombre or not nuevo_user or not nuevo_pwd:
+            st.error("Todos los campos son obligatorios")
 
         else:
-            # 3️⃣ Guardar usuario encriptado
-            cursor.execute(
-                "INSERT INTO usuarios (nombre, usuario, password) VALUES (?, ?, ?)",
-                (nuevo_nombre, nuevo_user, encriptar_password(nuevo_pwd))
-            )
-            conn.commit()
+            # 2️⃣ Verificar si ya existe
+            existe = cursor.execute(
+                "SELECT id FROM usuarios WHERE usuario=?",
+                (nuevo_user,)
+            ).fetchone()
 
-            st.success("Cuenta creada correctamente")
-            st.session_state.pantalla = "login"
-            st.rerun()
-            
+            if existe:
+                st.error("Ese usuario ya existe")
+
+            else:
+                # 3️⃣ Guardar usuario encriptado
+                cursor.execute(
+                    "INSERT INTO usuarios (nombre, usuario, password) VALUES (?, ?, ?)",
+                    (nuevo_nombre, nuevo_user, encriptar_password(nuevo_pwd))
+                )
+                conn.commit()
+
+                st.success("Cuenta creada correctamente")
+                st.session_state.pantalla = "login"
+                st.rerun()
+
+    if st.button("⬅ Volver al login"):
+        st.session_state.pantalla = "login"
+        st.rerun()
+
     st.stop()
-
+    
 # ================= EXTRACCIÓN =================
 def extraer_datos(texto):
     lineas = [l.strip() for l in texto.split('\n') if l.strip()]
@@ -461,11 +474,3 @@ if st.button("📥 Exportar TODOS los expedientes a Excel"):
         file_name="Auditoria_Completa.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
-
-
-
-
-
-
-
-
