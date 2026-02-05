@@ -165,8 +165,8 @@ def crear_formulario_bienes_servicios(registro_id):
             if st.button("✔ Marcar a CC y CP"):
                 st.session_state.form_bs.loc[0, ["CC","CP"]] = "√"
     with col_btn2:
-        if rnc.startswith("4"):
-            if st.button("✔ Resetear DGII/TSS/RPE"):
+        if rnc.startswith("1"):
+            if st.button("✔ Marcar DGII/TSS/RPE"):
                 st.session_state.form_bs.loc[0, ["DGII","TSS","RPE"]] = "√"
 
     # 5. El Editor
@@ -451,5 +451,6 @@ if not df_export.empty:
     )
 else:
     st.write("No hay expedientes pendientes para exportar.")
+
 
 
