@@ -294,96 +294,46 @@ with col2:
         st.session_state.clear()
         st.rerun()
 
-# ================= ENTRADA DE DATOS (CON AUTO-LIMPIEZA CORREGIDA) =================
-
-# 1. Definimos la función que hace el trabajo SUCIO (Guardar y Limpiar)
-def procesar_guardado():
-    # Leemos los valores directamente del estado
-    texto_actual = st.session_state.input_texto
-    cuenta_actual = st.session_state.input_cuenta
+# ================= ENTRADA DE DATOS (CON FORMULARIO SEGURO) =================
+# Usamos 'with st.form' que agrupa todo y protege contra errores de refresco
+# clear_on_submit=True: Limpia los campos AUTOMÁTICAMENTE al darle al botón
+with st.form("formulario_entrada", clear_on_submit=True):
+    texto_pegado = st.text_area("📥 Pegue el texto aquí")
+    cuenta_objetal_manual = st.text_input("🏷️ Cuenta Objetal (llenado manual por auditor)")
     
-    if not texto_actual.strip():
-        st.warning("El campo de texto está vacío.")
-        return
+    # El botón de envío va DENTRO del formulario
+    enviado = st.form_submit_button("📤 Enviar al Historial")
 
-    nuevo_registro = extraer_datos(texto_actual)
-    
-    insert_reg_sql = """
-        INSERT INTO registros (
-            institucion, estructura_programatica, numero_libramiento,
-            importe, clasificacion, rnc, cuenta_objetal, usuario_id
-        )
-        VALUES (:inst, :est, :lib, :imp, :clas, :rnc, :cta, :uid)
-    """
-    params_reg = {
-        "inst": nuevo_registro["institucion"],
-        "est": nuevo_registro["estructura_programatica"],
-        "lib": nuevo_registro["numero_libramiento"],
-        "imp": nuevo_registro["importe"],
-        "clas": nuevo_registro["clasificacion"],
-        "rnc": nuevo_registro["rnc"],
-        "cta": cuenta_actual,
-        "uid": st.session_state.usuario_id
-    }
-    
-    if run_query(insert_reg_sql, params_reg):
-        st.toast("✅ Registro guardado exitosamente") # Usamos toast, es más moderno y no se borra al recargar
-        
-        # 🧹 AQUÍ SÍ PODEMOS LIMPIAR (Porque estamos dentro de la callback)
-        st.session_state.input_texto = ""
-        st.session_state.input_cuenta = ""
-
-# 2. Dibujamos los Inputs (campos de texto)
-# OJO: No les ponemos valor por defecto, ellos leen de su 'key'
-st.text_area("📥 Pegue el texto aquí", key="input_texto")
-st.text_input("🏷️ Cuenta Objetal (llenado manual por auditor)", key="input_cuenta")
-
-# 3. El Botón (Magia: usamos 'on_click')
-# Al presionar, PRIMERO ejecuta la función 'procesar_guardado' y LUEGO recarga la página limpia.
-st.button("📤 Enviar al Historial", on_click=procesar_guardado)
-# ================= HISTORIAL =================
-st.markdown("---")
-st.subheader("📊 Historial")
-
-def colorear_estado(val):
-    if val == "En proceso":
-        return "background-color:#ffe5e5; color:red; font-weight:bold"
-    elif val == "Completado":
-        return "background-color:#e6ffe6; color:green; font-weight:bold"
-    return ""
-
-historial_sql = """
-    SELECT id, institucion, numero_libramiento, estructura_programatica, 
-           importe, cuenta_objetal, clasificacion, estado
-    FROM registros
-    WHERE usuario_id = :uid AND exportado = FALSE
-    ORDER BY id DESC
-"""
-df_historial = get_data(historial_sql, params={"uid": st.session_state.usuario_id})
-
-registro_sel = None
-
-if df_historial.empty:
-    st.info("No hay expedientes registrados todavía.")
-else:
-    st.dataframe(
-        df_historial.style.map(colorear_estado, subset=["estado"]),
-        use_container_width=True
-    )
-
-    registro_sel = st.selectbox(
-        "📌 Seleccione expediente",
-        df_historial["id"],
-        format_func=lambda x: f"#{x} — {df_historial.loc[df_historial.id==x,'institucion'].values[0]}"
-    )
-    
-    if st.button("🗑️ Borrar expediente seleccionado"):
-        del_sql = "DELETE FROM registros WHERE id = :id AND usuario_id = :uid"
-        run_query(del_sql, params={"id": int(registro_sel), "uid": st.session_state.usuario_id})
-        st.warning("Expediente eliminado")
-        time.sleep(1)
-        st.rerun()
-
+    if enviado:
+        if not texto_pegado.strip():
+            st.warning("El campo de texto está vacío.")
+        else:
+            # Procesamos los datos
+            nuevo_registro = extraer_datos(texto_pegado)
+            
+            insert_reg_sql = """
+                INSERT INTO registros (
+                    institucion, estructura_programatica, numero_libramiento,
+                    importe, clasificacion, rnc, cuenta_objetal, usuario_id
+                )
+                VALUES (:inst, :est, :lib, :imp, :clas, :rnc, :cta, :uid)
+            """
+            params_reg = {
+                "inst": nuevo_registro["institucion"],
+                "est": nuevo_registro["estructura_programatica"],
+                "lib": nuevo_registro["numero_libramiento"],
+                "imp": nuevo_registro["importe"],
+                "clas": nuevo_registro["clasificacion"],
+                "rnc": nuevo_registro["rnc"],
+                "cta": cuenta_objetal_manual,
+                "uid": st.session_state.usuario_id
+            }
+            
+            if run_query(insert_reg_sql, params_reg):
+                st.toast("✅ Registro guardado exitosamente")
+                # No necesitamos limpiar manualmente ni usar st.rerun(), 
+                # el formulario lo hace solo.
+                time.sleep(1)
     # ================= VISTA PREVIA Y EDICIÓN (BLINDADA) =================
     if registro_sel:
         datos_exp = df_historial[df_historial.id == registro_sel][[
@@ -470,3 +420,4 @@ if not df_export.empty:
     )
 else:
     st.write("No hay expedientes pendientes para exportar.")
+
