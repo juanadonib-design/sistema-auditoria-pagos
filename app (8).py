@@ -441,8 +441,8 @@ def marcar_como_archivados():
         st.toast("✅ Lote exportado y archivado correctamente.")
 
 export_sql = """
-    SELECT r.institucion, r.estructura_programatica, r.numero_libramiento, 
-           r.importe, r.cuenta_objetal, r.clasificacion,
+    SELECT r.numero_libramiento, r.estructura_programatica, r.institucion, 
+           r.importe, r.cuenta_objetal,
            f.CC, f.CP, f.OFI, f.FACT, f.FIRMA_DIGITAL, f.Recep,
            f.RPE, f.DGII, f.TSS, f.OC, f.CONT, f.TITULO,
            f.DETE, f.JURI_INMO, f.TASACION, f.APROB_PRESI, f.VIAJE_PRESI
@@ -468,3 +468,4 @@ if not df_export.empty:
     )
 else:
     st.write("No hay expedientes pendientes para exportar.")
+
