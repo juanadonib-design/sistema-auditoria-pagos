@@ -162,11 +162,11 @@ def crear_formulario_bienes_servicios(registro_id):
     # Quitamos 'st.columns' para que se apilen verticalmente
     
     if rnc.startswith("1") or rnc.startswith("4"):
-        if st.button("✔ Resetear a CC y CP"):
+        if st.button("✔ Marcar CC y CP"):
             st.session_state.form_bs.loc[0, ["CC","CP"]] = "√"
             
     if rnc.startswith("4"):
-        if st.button("✔ Resetear DGII/TSS/RPE"):
+        if st.button("✔ Marcar DGII/TSS/RPE"):
             st.session_state.form_bs.loc[0, ["DGII","TSS","RPE"]] = "√"
 
     # 5. El Editor
@@ -451,6 +451,7 @@ if not df_export.empty:
     )
 else:
     st.write("No hay expedientes pendientes para exportar.")
+
 
 
 
