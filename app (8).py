@@ -450,7 +450,6 @@ if st.button("📥 Exportar TODOS los expedientes a Excel"):
             f.CC, f.CP, f.OFI, f.FACT, f.FIRMA_DIGITAL, f.Recep,
             f.RPE, f.DGII, f.TSS, f.OC, f.CONT, f.TITULO,
             f.DETE, f.JURI_INMO, f.TASACION, f.APROB_PRESI, f.VIAJE_PRESI
-        
         FROM registros r
         LEFT JOIN formulario_bienes_servicios f
             ON r.id = f.registro_id
@@ -458,24 +457,16 @@ if st.button("📥 Exportar TODOS los expedientes a Excel"):
         ORDER BY r.id DESC
     """, conn, params=(st.session_state.usuario_id,))
 
-    FROM registros r
-    LEFT JOIN formulario_bienes_servicios f
-        ON r.id = f.registro_id
+    output = BytesIO()
 
-    WHERE r.usuario_id = ?   -- 🔥 FILTRA POR USUARIO ACTUAL
-    ORDER BY r.id DESC
-""", conn, params=(st.session_state.usuario_id,))
-
-output = BytesIO()
-with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+    with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
         df_export.to_excel(writer, index=False, sheet_name="Auditoria")
-
-    buffer = output.getvalue()
 
     st.download_button(
         "⬇️ Descargar Excel General",
-        buffer,
+        output.getvalue(),
         file_name="Auditoria_Completa.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+"
 
