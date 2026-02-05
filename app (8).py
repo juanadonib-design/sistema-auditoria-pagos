@@ -71,6 +71,19 @@ def inicializar_tablas():
             DETE TEXT, JURI_INMO TEXT, TASACION TEXT, APROB_PRESI TEXT, VIAJE_PRESI TEXT
         );
     """)
+    # --- MIGRACIÓN AUTOMÁTICA ---
+def actualizar_db_exportado():
+    try:
+        # Intentamos agregar la columna 'exportado' si no existe
+        run_query("ALTER TABLE registros ADD COLUMN IF NOT EXISTS exportado BOOLEAN DEFAULT FALSE;")
+        # Aseguramos que los nulos sean falsos (para registros viejos)
+        run_query("UPDATE registros SET exportado = FALSE WHERE exportado IS NULL;")
+    except Exception as e:
+        pass # Si ya existe o falla, seguimos (no es crítico si ya está bien)
+
+# Ejecutar esto al inicio junto con inicializar_tablas()
+inicializar_tablas()
+actualizar_db_exportado()
 
 # Ejecutamos la creación de tablas al inicio (por si no existen)
 inicializar_tablas()
@@ -257,12 +270,12 @@ def colorear_estado(val):
         return "background-color:#e6ffe6; color:green; font-weight:bold"
     return ""
 
-# Cargar historial del usuario
+# Cargar historial del usuario (SOLO REGISTROS ACTIVOS / NO EXPORTADOS)
 historial_sql = """
     SELECT id, institucion, numero_libramiento, estructura_programatica, 
            importe, cuenta_objetal, clasificacion, estado
     FROM registros
-    WHERE usuario_id = :uid
+    WHERE usuario_id = :uid AND exportado = FALSE
     ORDER BY id DESC
 """
 df_historial = get_data(historial_sql, params={"uid": st.session_state.usuario_id})
@@ -404,27 +417,49 @@ if registro_sel:
     if clasif == "SERVICIOS BASICOS":
         crear_formulario_bienes_servicios(registro_sel)
 
-# ================= EXPORTACIÓN =================
+# ================= EXPORTACIÓN Y CIERRE DE LOTE =================
 st.markdown("---")
-st.markdown("## 📤 Exportación General")
+st.markdown("## 📤 Cerrar Lote y Exportar")
 
-if st.button("📥 Exportar a Excel"):
-    export_sql = """
-        SELECT r.institucion, r.estructura_programatica, r.numero_libramiento, 
-               r.importe, r.cuenta_objetal, r.clasificacion,
-               f.CC, f.CP, f.OFI, f.FACT, f.FIRMA_DIGITAL, f.Recep,
-               f.RPE, f.DGII, f.TSS, f.OC, f.CONT, f.TITULO,
-               f.DETE, f.JURI_INMO, f.TASACION, f.APROB_PRESI, f.VIAJE_PRESI
-        FROM registros r
-        LEFT JOIN formulario_bienes_servicios f ON r.id = f.registro_id
-        WHERE r.usuario_id = :uid
-        ORDER BY r.id DESC
+# Función que se ejecuta AUTOMÁTICAMENTE al descargar
+def marcar_como_archivados():
+    update_sql = """
+        UPDATE registros 
+        SET exportado = TRUE 
+        WHERE usuario_id = :uid AND exportado = FALSE
     """
-    df_export = get_data(export_sql, params={"uid": st.session_state.usuario_id})
+    if run_query(update_sql, params={"uid": st.session_state.usuario_id}):
+        st.toast("✅ Lote exportado y archivado correctamente. Pantalla limpia.")
+
+# 1. Obtenemos los datos PENDIENTES
+export_sql = """
+    SELECT r.institucion, r.estructura_programatica, r.numero_libramiento, 
+           r.importe, r.cuenta_objetal, r.clasificacion,
+           f.CC, f.CP, f.OFI, f.FACT, f.FIRMA_DIGITAL, f.Recep,
+           f.RPE, f.DGII, f.TSS, f.OC, f.CONT, f.TITULO,
+           f.DETE, f.JURI_INMO, f.TASACION, f.APROB_PRESI, f.VIAJE_PRESI
+    FROM registros r
+    LEFT JOIN formulario_bienes_servicios f ON r.id = f.registro_id
+    WHERE r.usuario_id = :uid AND r.exportado = FALSE
+    ORDER BY r.id DESC
+"""
+df_export = get_data(export_sql, params={"uid": st.session_state.usuario_id})
+
+if not df_export.empty:
+    st.info(f"Tienes {len(df_export)} expedientes listos para exportar.")
     
+    # Preparar Excel en memoria
     output = BytesIO()
     with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
         df_export.to_excel(writer, index=False, sheet_name="Auditoria")
     
-    st.download_button("⬇️ Descargar Excel", output.getvalue(), "Auditoria_Cloud.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-
+    # Botón Inteligente: Descarga y Limpia al mismo tiempo
+    st.download_button(
+        label="⬇️ Descargar Excel y Limpiar Pantalla",
+        data=output.getvalue(),
+        file_name="Auditoria_Lote.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        on_click=marcar_como_archivados  # <--- ESTO HACE LA MAGIA
+    )
+else:
+    st.write("No hay expedientes pendientes para exportar.")
