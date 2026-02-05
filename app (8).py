@@ -467,7 +467,7 @@ if st.button("📥 Exportar TODOS los expedientes a Excel"):
 """, conn, params=(st.session_state.usuario_id,))
 
 output = BytesIO()
-    with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
         df_export.to_excel(writer, index=False, sheet_name="Auditoria")
 
     buffer = output.getvalue()
@@ -478,3 +478,4 @@ output = BytesIO()
         file_name="Auditoria_Completa.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
