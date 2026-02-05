@@ -372,7 +372,7 @@ else:
             "importe", "cuenta_objetal", "clasificacion"
         ]]
         
-        st.markdown("### 📄 Vista previa y corrección")
+        st.markdown("### 📄 Vista previa del expediente")
         
         column_config = {
             "clasificacion": st.column_config.SelectboxColumn(
@@ -451,3 +451,4 @@ if not df_export.empty:
     )
 else:
     st.write("No hay expedientes pendientes para exportar.")
+
