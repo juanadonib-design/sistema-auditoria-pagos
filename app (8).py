@@ -121,7 +121,7 @@ def extraer_datos(texto):
         "rnc": rnc_final
     }
 
-# ================= DEFINICIÓN DEL FORMULARIO (¡MOVIMOS ESTO ARRIBA!) =================
+# ================= DEFINICIÓN DEL FORMULARIO =================
 def crear_formulario_bienes_servicios(registro_id):
     st.markdown('### 📋 Formulario de Bienes y Servicios <span class="badge-en-uso">En uso</span>', unsafe_allow_html=True)
 
@@ -158,9 +158,7 @@ def crear_formulario_bienes_servicios(registro_id):
         
         st.session_state.form_id = registro_id
 
-    # 4. Botones de ayuda rápida (Verticales: Uno debajo del otro)
-    # Quitamos 'st.columns' para que se apilen verticalmente
-    
+    # 4. Botones de ayuda rápida (Verticales)
     if rnc.startswith("1") or rnc.startswith("4"):
         if st.button("✔ Marcar CC y CP"):
             st.session_state.form_bs.loc[0, ["CC","CP"]] = "√"
@@ -295,20 +293,16 @@ with col2:
         st.rerun()
 
 # ================= ENTRADA DE DATOS (CON FORMULARIO SEGURO) =================
-# Usamos 'with st.form' que agrupa todo y protege contra errores de refresco
-# clear_on_submit=True: Limpia los campos AUTOMÁTICAMENTE al darle al botón
 with st.form("formulario_entrada", clear_on_submit=True):
     texto_pegado = st.text_area("📥 Pegue el texto aquí")
     cuenta_objetal_manual = st.text_input("🏷️ Cuenta Objetal (llenado manual por auditor)")
     
-    # El botón de envío va DENTRO del formulario
     enviado = st.form_submit_button("📤 Enviar al Historial")
 
     if enviado:
         if not texto_pegado.strip():
             st.warning("El campo de texto está vacío.")
         else:
-            # Procesamos los datos
             nuevo_registro = extraer_datos(texto_pegado)
             
             insert_reg_sql = """
@@ -331,57 +325,100 @@ with st.form("formulario_entrada", clear_on_submit=True):
             
             if run_query(insert_reg_sql, params_reg):
                 st.toast("✅ Registro guardado exitosamente")
-                # No necesitamos limpiar manualmente ni usar st.rerun(), 
-                # el formulario lo hace solo.
                 time.sleep(1)
-    # ================= VISTA PREVIA Y EDICIÓN (BLINDADA) =================
-    if registro_sel:
-        datos_exp = df_historial[df_historial.id == registro_sel][[
-            "institucion", "estructura_programatica", "numero_libramiento", 
-            "importe", "cuenta_objetal", "clasificacion"
-        ]]
-        
-        st.markdown("### 📄 Vista previa del expediente")
-        
-        column_config = {
-            "clasificacion": st.column_config.SelectboxColumn(
-                "Clasificación",
-                options=["General", "SERVICIOS BASICOS"], 
-                width="medium",
-                help="Cambia a SERVICIOS BASICOS para ver el formulario"
-            )
-        }
 
-        datos_editados = st.data_editor(
-            datos_exp,
-            column_config=column_config,
-            disabled=["institucion","estructura_programatica","numero_libramiento","importe"], 
-            use_container_width=True,
-            key=f"preview_{registro_sel}"
+# ================= HISTORIAL =================
+st.markdown("---")
+st.subheader("📊 Historial")
+
+def colorear_estado(val):
+    if val == "En proceso":
+        return "background-color:#ffe5e5; color:red; font-weight:bold"
+    elif val == "Completado":
+        return "background-color:#e6ffe6; color:green; font-weight:bold"
+    return ""
+
+historial_sql = """
+    SELECT id, institucion, numero_libramiento, estructura_programatica, 
+           importe, cuenta_objetal, clasificacion, estado
+    FROM registros
+    WHERE usuario_id = :uid AND exportado = FALSE
+    ORDER BY id DESC
+"""
+df_historial = get_data(historial_sql, params={"uid": st.session_state.usuario_id})
+
+# --- CORRECCIÓN: Inicializar la variable SIEMPRE ---
+registro_sel = None 
+# ---------------------------------------------------
+
+if df_historial.empty:
+    st.info("No hay expedientes registrados todavía.")
+else:
+    st.dataframe(
+        df_historial.style.map(colorear_estado, subset=["estado"]),
+        use_container_width=True
+    )
+
+    registro_sel = st.selectbox(
+        "📌 Seleccione expediente",
+        df_historial["id"],
+        format_func=lambda x: f"#{x} — {df_historial.loc[df_historial.id==x,'institucion'].values[0]}"
+    )
+    
+    if st.button("🗑️ Borrar expediente seleccionado"):
+        del_sql = "DELETE FROM registros WHERE id = :id AND usuario_id = :uid"
+        run_query(del_sql, params={"id": int(registro_sel), "uid": st.session_state.usuario_id})
+        st.warning("Expediente eliminado")
+        time.sleep(1)
+        st.rerun()
+
+# ================= VISTA PREVIA Y EDICIÓN (BLINDADA) =================
+if registro_sel:
+    datos_exp = df_historial[df_historial.id == registro_sel][[
+        "institucion", "estructura_programatica", "numero_libramiento", 
+        "importe", "cuenta_objetal", "clasificacion"
+    ]]
+    
+    st.markdown("### 📄 Vista previa del expediente")
+    
+    column_config = {
+        "clasificacion": st.column_config.SelectboxColumn(
+            "Clasificación",
+            options=["General", "SERVICIOS BASICOS"], 
+            width="medium",
+            help="Cambia a SERVICIOS BASICOS para ver el formulario"
         )
+    }
+
+    datos_editados = st.data_editor(
+        datos_exp,
+        column_config=column_config,
+        disabled=["institucion","estructura_programatica","numero_libramiento","importe"], 
+        use_container_width=True,
+        key=f"preview_{registro_sel}"
+    )
+    
+    if not datos_editados.equals(datos_exp):
+        nueva_cuenta = datos_editados.iloc[0]["cuenta_objetal"]
+        nueva_clasif = datos_editados.iloc[0]["clasificacion"]
         
-        if not datos_editados.equals(datos_exp):
-            nueva_cuenta = datos_editados.iloc[0]["cuenta_objetal"]
-            nueva_clasif = datos_editados.iloc[0]["clasificacion"]
-            
-            upd_sql = "UPDATE registros SET cuenta_objetal = :cta, clasificacion = :clas WHERE id = :id AND usuario_id = :uid"
-            params_upd = {
-                "cta": nueva_cuenta, "clas": nueva_clasif, 
-                "id": int(registro_sel), "uid": st.session_state.usuario_id
-            }
-            if run_query(upd_sql, params_upd):
-                st.toast("✅ Expediente actualizado correctamente")
-                time.sleep(0.5)
-                st.rerun()
+        upd_sql = "UPDATE registros SET cuenta_objetal = :cta, clasificacion = :clas WHERE id = :id AND usuario_id = :uid"
+        params_upd = {
+            "cta": nueva_cuenta, "clas": nueva_clasif, 
+            "id": int(registro_sel), "uid": st.session_state.usuario_id
+        }
+        if run_query(upd_sql, params_upd):
+            st.toast("✅ Expediente actualizado correctamente")
+            time.sleep(0.5)
+            st.rerun()
 
-        # LÓGICA BLINDADA PARA MOSTRAR EL FORMULARIO
-        # (Ahora sí funcionará porque la función 'crear_formulario...' ya fue leída arriba)
-        valor_actual_db = df_historial.loc[df_historial.id == registro_sel, "clasificacion"].values[0]
-        clasif_limpia = str(valor_actual_db).strip().upper()
+    # LÓGICA BLINDADA PARA MOSTRAR EL FORMULARIO
+    valor_actual_db = df_historial.loc[df_historial.id == registro_sel, "clasificacion"].values[0]
+    clasif_limpia = str(valor_actual_db).strip().upper()
 
-        if "SERVICIOS BASICOS" in clasif_limpia:
-            st.markdown("---")
-            crear_formulario_bienes_servicios(registro_sel)
+    if "SERVICIOS BASICOS" in clasif_limpia:
+        st.markdown("---")
+        crear_formulario_bienes_servicios(registro_sel)
 
 # ================= EXPORTACIÓN =================
 st.markdown("---")
@@ -420,4 +457,3 @@ if not df_export.empty:
     )
 else:
     st.write("No hay expedientes pendientes para exportar.")
-
