@@ -304,67 +304,28 @@ else:
         time.sleep(1)
         st.rerun()
 
-    # ================= VISTA PREVIA Y EDICIÓN (Blindada) =================
+    # ================= VISTA PREVIA =================
     if registro_sel:
-        # 1. Traemos la columna 'clasificacion' para poder editarla si hubo un error
         datos_exp = df_historial[df_historial.id == registro_sel][[
-            "institucion", "estructura_programatica", "numero_libramiento", 
-            "importe", "cuenta_objetal", "clasificacion"
+            "institucion", "estructura_programatica", "numero_libramiento", "importe", "cuenta_objetal"
         ]]
         
-        st.markdown("### 📄 Vista previa y corrección")
-        
-        # 2. Configuración para que la clasificación sea un menú desplegable
-        column_config = {
-            "clasificacion": st.column_config.SelectboxColumn(
-                "Clasificación",
-                options=["General", "SERVICIOS BASICOS"], 
-                width="medium",
-                help="Cambia a SERVICIOS BASICOS para ver el formulario"
-            )
-        }
-
-        # 3. Editor de datos (Permite editar Cuenta Objetal Y Clasificación)
+        st.markdown("### 📄 Vista previa del expediente")
         datos_editados = st.data_editor(
             datos_exp,
-            column_config=column_config,
-            # Bloqueamos lo que no se debe tocar
-            disabled=["institucion","estructura_programatica","numero_libramiento","importe"], 
+            disabled=["institucion","estructura_programatica","numero_libramiento","importe"],
             use_container_width=True,
             key=f"preview_{registro_sel}"
         )
         
-        # 4. Lógica de Guardado Automático (Si cambias algo, se guarda en la BD)
-        if not datos_editados.equals(datos_exp):
-            nueva_cuenta = datos_editados.iloc[0]["cuenta_objetal"]
-            nueva_clasif = datos_editados.iloc[0]["clasificacion"]
-            
-            # Actualizamos en la Base de Datos
-            upd_sql = """
-                UPDATE registros 
-                SET cuenta_objetal = :cta, clasificacion = :clas 
-                WHERE id = :id AND usuario_id = :uid
-            """
-            params_upd = {
-                "cta": nueva_cuenta, 
-                "clas": nueva_clasif, 
-                "id": int(registro_sel), 
-                "uid": st.session_state.usuario_id
-            }
-            
-            if run_query(upd_sql, params_upd):
-                st.toast("✅ Expediente actualizado correctamente")
-                time.sleep(0.5)
-                st.rerun() # Reiniciamos para aplicar cambios
+        # 🔄 Guardar edición de cuenta objetal
+        nueva_cuenta = datos_editados.iloc[0]["cuenta_objetal"]
+        cuenta_actual = datos_exp.iloc[0]["cuenta_objetal"]
 
-        # 5. LÓGICA BLINDADA PARA MOSTRAR EL FORMULARIO
-        # Esto ignora espacios vacíos y mayúsculas/minúsculas
-        valor_actual_db = df_historial.loc[df_historial.id == registro_sel, "clasificacion"].values[0]
-        clasif_limpia = str(valor_actual_db).strip().upper() # Quitamos espacios y hacemos mayúscula
-
-        if "SERVICIOS BASICOS" in clasif_limpia:
-            st.markdown("---")
-            crear_formulario_bienes_servicios(registro_sel)
+        if nueva_cuenta != cuenta_actual:
+            upd_sql = "UPDATE registros SET cuenta_objetal = :cta WHERE id = :id AND usuario_id = :uid"
+            run_query(upd_sql, params={"cta": nueva_cuenta, "id": int(registro_sel), "uid": st.session_state.usuario_id})
+            st.success("Cuenta objetal actualizada")
 
 # ================= FORMULARIO INTELIGENTE (CARGA DATOS PREVIOS) =================
 def crear_formulario_bienes_servicios(registro_id):
@@ -515,5 +476,4 @@ if not df_export.empty:
     )
 else:
     st.write("No hay expedientes pendientes para exportar.")
-
 
