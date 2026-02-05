@@ -324,13 +324,13 @@ else:
     nueva_cuenta = datos_editados.iloc[0]["Cuenta Objetal"]
     cuenta_actual = datos_exp.iloc[0]["Cuenta Objetal"]
 
-if nueva_cuenta != cuenta_actual:
-    cursor.execute(
-        "UPDATE registros SET cuenta_objetal=? WHERE id=? AND usuario_id=?",
-        (nueva_cuenta, registro_sel, st.session_state.usuario_id)
-    )
-    conn.commit()
-    st.success("Cuenta objetal actualizada")
+    if nueva_cuenta != cuenta_actual:
+        cursor.execute(
+         "UPDATE registros SET cuenta_objetal=? WHERE id=? AND usuario_id=?",
+         (nueva_cuenta, registro_sel, st.session_state.usuario_id)
+     )
+     conn.commit()
+     st.success("Cuenta objetal actualizada")
 
 # ================= FORMULARIO =================
 def crear_formulario_bienes_servicios(registro_id):
@@ -472,6 +472,7 @@ st.download_button(
         file_name="Auditoria_Completa.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
 
 
 
