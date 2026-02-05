@@ -86,11 +86,15 @@ def extraer_datos(texto):
     estructura_final = "No encontrado"
     libramiento_final = "No encontrado"
     importe_final = "No encontrado"
+    
+    # Por defecto es General
     clasificacion = "General"
 
+    # 1. Buscamos el RNC
     rnc_match = re.search(r'\b\d{9,11}\b', texto)
     rnc_final = rnc_match.group(0) if rnc_match else ""
 
+    # 2. Buscamos Institución, Estructura, Libramiento e Importe
     for i, linea in enumerate(lineas):
         if re.search(r'\bINSTITUCI[ÓO]N\b', linea, re.IGNORECASE):
             if i + 1 < len(lineas):
@@ -108,8 +112,19 @@ def extraer_datos(texto):
     imp_match = re.search(r'RD\$?\s?[\d,]+\.\d{2}', texto)
     if imp_match: importe_final = imp_match.group(0)
 
+    # ================= CLASIFICACIÓN INTELIGENTE (MEJORADA) =================
+    # Normalizamos: quitamos acentos y pasamos a mayúsculas
     texto_norm = unicodedata.normalize('NFD', texto.upper()).encode('ascii', 'ignore').decode('utf-8')
-    if "SERVICIOS BASICOS" in texto_norm or "SERVICIO BASICO" in texto_norm:
+    
+    # Explicación del REGEX:
+    # SERVICIOS? -> Busca "SERVICIO" o "SERVICIOS"
+    # \s+        -> Busca uno o más espacios (o saltos de línea) en medio
+    # BASICOS?   -> Busca "BASICO" o "BASICOS"
+    
+    patron_servicios = r'SERVICIOS?\s+BASICOS?'
+    patron_bienes = r'BIENES\s+Y\s+SERVICIOS' # Por si dice "Bienes y Servicios"
+
+    if re.search(patron_servicios, texto_norm) or re.search(patron_bienes, texto_norm):
         clasificacion = "SERVICIOS BASICOS"
 
     return {
@@ -457,3 +472,4 @@ if not df_export.empty:
     )
 else:
     st.write("No hay expedientes pendientes para exportar.")
+
