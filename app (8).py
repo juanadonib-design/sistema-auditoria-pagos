@@ -132,7 +132,100 @@ def extraer_datos(texto):
         "clasificacion": clasificacion,
         "rnc": rnc_final
     }
+# ================= FORMULARIO INTELIGENTE (CARGA DATOS PREVIOS) =================
+# PEGA ESTO ARRIBA, ANTES DEL LOGIN
+def crear_formulario_bienes_servicios(registro_id):
+    st.markdown('### 📋 Formulario de Bienes y Servicios <span class="badge-en-uso">En uso</span>', unsafe_allow_html=True)
 
+    columnas = ["CC","CP","OFI","FACT","FIRMA_DIGITAL","Recep","RPE","DGII","TSS",
+                "OC","CONT","TITULO","DETE","JURI_INMO","TASACION","APROB_PRESI","VIAJE_PRESI"]
+
+    # 1. Obtener el RNC para saber qué casillas marcar por defecto
+    rnc_sql = "SELECT rnc FROM registros WHERE id = :id"
+    df_rnc = get_data(rnc_sql, params={"id": int(registro_id)})
+    
+    if df_rnc.empty:
+        st.error("Error cargando RNC")
+        return
+
+    rnc = str(df_rnc.iloc[0]["rnc"])
+
+    # 2. BUSCAR SI YA EXISTE UN FORMULARIO GUARDADO
+    form_sql = "SELECT * FROM formulario_bienes_servicios WHERE registro_id = :rid"
+    df_previo = get_data(form_sql, params={"rid": int(registro_id)})
+
+    # 3. Lógica de Inicialización
+    if "form_bs" not in st.session_state or st.session_state.get("form_id") != registro_id:
+        
+        if not df_previo.empty:
+            # CASO A: YA EXISTE -> CARGAR DATOS
+            data_dict = df_previo.iloc[0].to_dict()
+            filtered_data = {k: data_dict[k] for k in columnas if k in data_dict}
+            st.session_state.form_bs = pd.DataFrame([filtered_data])
+            
+        else:
+            # CASO B: ES NUEVO -> AUTOMÁTICO
+            base = {col: "N/A" for col in columnas}
+            
+            if rnc.startswith("1"):
+                base.update({"OFI":"√","FACT":"√","RPE":"√","DGII":"√","TSS":"√"})
+            elif rnc.startswith("4"):
+                base.update({"OFI":"√","FACT":"√"})
+            
+            st.session_state.form_bs = pd.DataFrame([base])
+        
+        st.session_state.form_id = registro_id
+
+    # 4. Botones de ayuda rápida
+    col_btn1, col_btn2 = st.columns(2)
+    with col_btn1:
+        if rnc.startswith("1") or rnc.startswith("4"):
+            if st.button("✔ Resetear a CC y CP"):
+                st.session_state.form_bs.loc[0, ["CC","CP"]] = "√"
+    with col_btn2:
+        if rnc.startswith("4"):
+            if st.button("✔ Resetear DGII/TSS/RPE"):
+                st.session_state.form_bs.loc[0, ["DGII","TSS","RPE"]] = "√"
+
+    # 5. El Editor
+    config = {col: st.column_config.SelectboxColumn(options=["√","N/A"], width=70) for col in columnas}
+    
+    df_editado = st.data_editor(
+        st.session_state.form_bs, 
+        column_config=config, 
+        hide_index=True, 
+        key="editor_bs"
+    )
+
+    # 6. Guardado
+    if st.button("💾 Guardar Formulario"):
+        datos = df_editado.iloc[0].to_dict()
+        
+        upsert_sql = """
+            INSERT INTO formulario_bienes_servicios (
+                registro_id, CC, CP, OFI, FACT, FIRMA_DIGITAL, Recep, RPE, DGII, TSS, 
+                OC, CONT, TITULO, DETE, JURI_INMO, TASACION, APROB_PRESI, VIAJE_PRESI
+            ) VALUES (
+                :rid, :CC, :CP, :OFI, :FACT, :FIRMA_DIGITAL, :Recep, :RPE, :DGII, :TSS, 
+                :OC, :CONT, :TITULO, :DETE, :JURI_INMO, :TASACION, :APROB_PRESI, :VIAJE_PRESI
+            )
+            ON CONFLICT (registro_id) DO UPDATE SET
+                CC=EXCLUDED.CC, CP=EXCLUDED.CP, OFI=EXCLUDED.OFI, FACT=EXCLUDED.FACT,
+                FIRMA_DIGITAL=EXCLUDED.FIRMA_DIGITAL, Recep=EXCLUDED.Recep, RPE=EXCLUDED.RPE,
+                DGII=EXCLUDED.DGII, TSS=EXCLUDED.TSS, OC=EXCLUDED.OC, CONT=EXCLUDED.CONT,
+                TITULO=EXCLUDED.TITULO, DETE=EXCLUDED.DETE, JURI_INMO=EXCLUDED.JURI_INMO,
+                TASACION=EXCLUDED.TASACION, APROB_PRESI=EXCLUDED.APROB_PRESI, VIAJE_PRESI=EXCLUDED.VIAJE_PRESI;
+        """
+        
+        params_form = datos.copy()
+        params_form["rid"] = int(registro_id)
+        
+        if run_query(upsert_sql, params_form):
+            run_query("UPDATE registros SET estado='Completado' WHERE id = :id", params={"id": int(registro_id)})
+            
+            st.success("Cambios guardados correctamente")
+            time.sleep(0.5)
+            st.rerun()
 # 🔵 CSS
 st.markdown("""
 <style>
@@ -327,109 +420,6 @@ else:
             run_query(upd_sql, params={"cta": nueva_cuenta, "id": int(registro_sel), "uid": st.session_state.usuario_id})
             st.success("Cuenta objetal actualizada")
 
-# ================= FORMULARIO INTELIGENTE (CARGA DATOS PREVIOS) =================
-def crear_formulario_bienes_servicios(registro_id):
-    st.markdown('### 📋 Formulario de Bienes y Servicios <span class="badge-en-uso">En uso</span>', unsafe_allow_html=True)
-
-    columnas = ["CC","CP","OFI","FACT","FIRMA_DIGITAL","Recep","RPE","DGII","TSS",
-                "OC","CONT","TITULO","DETE","JURI_INMO","TASACION","APROB_PRESI","VIAJE_PRESI"]
-
-    # 1. Obtener el RNC para saber qué casillas marcar por defecto (si es nuevo)
-    rnc_sql = "SELECT rnc FROM registros WHERE id = :id"
-    df_rnc = get_data(rnc_sql, params={"id": int(registro_id)})
-    
-    if df_rnc.empty:
-        st.error("Error cargando RNC")
-        return
-
-    rnc = str(df_rnc.iloc[0]["rnc"])
-
-    # 2. BUSCAR SI YA EXISTE UN FORMULARIO GUARDADO
-    form_sql = "SELECT * FROM formulario_bienes_servicios WHERE registro_id = :rid"
-    df_previo = get_data(form_sql, params={"rid": int(registro_id)})
-
-    # 3. Lógica de Inicialización (Solo corre si cambiamos de expediente)
-    #    Si el ID en sesión es diferente al seleccionado, recargamos los datos.
-    if "form_bs" not in st.session_state or st.session_state.get("form_id") != registro_id:
-        
-        if not df_previo.empty:
-            # CASO A: YA EXISTE -> CARGAR DATOS DE LA BASE DE DATOS
-            # Convertimos la fila de la BD a un diccionario
-            data_dict = df_previo.iloc[0].to_dict()
-            
-            # Filtramos solo las columnas que usa el editor (para evitar errores con IDs o fechas)
-            filtered_data = {k: data_dict[k] for k in columnas if k in data_dict}
-            
-            # Creamos el DataFrame con los datos recuperados
-            st.session_state.form_bs = pd.DataFrame([filtered_data])
-            # st.toast("Datos previos cargados exitosamente") # Opcional: aviso visual
-            
-        else:
-            # CASO B: ES NUEVO -> APLICAR LÓGICA AUTOMÁTICA POR RNC
-            base = {col: "N/A" for col in columnas}
-            
-            if rnc.startswith("1"):
-                base.update({"OFI":"√","FACT":"√","RPE":"√","DGII":"√","TSS":"√"})
-            elif rnc.startswith("4"):
-                base.update({"OFI":"√","FACT":"√"})
-            
-            st.session_state.form_bs = pd.DataFrame([base])
-        
-        # Actualizamos el rastreador para saber que ya cargamos este ID
-        st.session_state.form_id = registro_id
-
-    # 4. Botones de ayuda rápida (Siguen funcionando para correcciones masivas)
-    col_btn1, col_btn2 = st.columns(2)
-    with col_btn1:
-        if rnc.startswith("1") or rnc.startswith("4"):
-            if st.button("✔ Resetear a CC y CP"):
-                st.session_state.form_bs.loc[0, ["CC","CP"]] = "√"
-    with col_btn2:
-        if rnc.startswith("4"):
-            if st.button("✔ Resetear DGII/TSS/RPE"):
-                st.session_state.form_bs.loc[0, ["DGII","TSS","RPE"]] = "√"
-
-    # 5. El Editor
-    config = {col: st.column_config.SelectboxColumn(options=["√","N/A"], width=70) for col in columnas}
-    
-    df_editado = st.data_editor(
-        st.session_state.form_bs, 
-        column_config=config, 
-        hide_index=True, 
-        key="editor_bs"
-    )
-
-    # 6. Guardado (UPSERT - Actualiza si existe, Inserta si no)
-    if st.button("💾 Guardar Formulario"):
-        datos = df_editado.iloc[0].to_dict()
-        
-        upsert_sql = """
-            INSERT INTO formulario_bienes_servicios (
-                registro_id, CC, CP, OFI, FACT, FIRMA_DIGITAL, Recep, RPE, DGII, TSS, 
-                OC, CONT, TITULO, DETE, JURI_INMO, TASACION, APROB_PRESI, VIAJE_PRESI
-            ) VALUES (
-                :rid, :CC, :CP, :OFI, :FACT, :FIRMA_DIGITAL, :Recep, :RPE, :DGII, :TSS, 
-                :OC, :CONT, :TITULO, :DETE, :JURI_INMO, :TASACION, :APROB_PRESI, :VIAJE_PRESI
-            )
-            ON CONFLICT (registro_id) DO UPDATE SET
-                CC=EXCLUDED.CC, CP=EXCLUDED.CP, OFI=EXCLUDED.OFI, FACT=EXCLUDED.FACT,
-                FIRMA_DIGITAL=EXCLUDED.FIRMA_DIGITAL, Recep=EXCLUDED.Recep, RPE=EXCLUDED.RPE,
-                DGII=EXCLUDED.DGII, TSS=EXCLUDED.TSS, OC=EXCLUDED.OC, CONT=EXCLUDED.CONT,
-                TITULO=EXCLUDED.TITULO, DETE=EXCLUDED.DETE, JURI_INMO=EXCLUDED.JURI_INMO,
-                TASACION=EXCLUDED.TASACION, APROB_PRESI=EXCLUDED.APROB_PRESI, VIAJE_PRESI=EXCLUDED.VIAJE_PRESI;
-        """
-        
-        params_form = datos.copy()
-        params_form["rid"] = int(registro_id)
-        
-        if run_query(upsert_sql, params_form):
-            # Marcar registro principal como completado
-            run_query("UPDATE registros SET estado='Completado' WHERE id = :id", params={"id": int(registro_id)})
-            
-            st.success("Cambios guardados correctamente")
-            time.sleep(1)
-            st.rerun()
-
 # ================= EXPORTACIÓN Y CIERRE DE LOTE =================
 st.markdown("---")
 st.markdown("## 📤 Cerrar Lote y Exportar")
@@ -476,4 +466,5 @@ if not df_export.empty:
     )
 else:
     st.write("No hay expedientes pendientes para exportar.")
+
 
