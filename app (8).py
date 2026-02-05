@@ -474,7 +474,7 @@ with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
 
 buffer = output.getvalue()
 
-    st.download_button(
+st.download_button(
         "⬇️ Descargar Excel General",
         buffer,
         file_name="Auditoria_Completa.xlsx",
