@@ -294,13 +294,19 @@ with col2:
         st.session_state.clear()
         st.rerun()
 
-# ================= ENTRADA DE DATOS (AUTO-LIMPIEZA) =================
-# 1. Agregamos 'key' para poder limpiar los campos después
-texto_pegado = st.text_area("📥 Pegue el texto aquí", key="input_texto")
-cuenta_objetal_manual = st.text_input("🏷️ Cuenta Objetal (llenado manual por auditor)", key="input_cuenta")
+# ================= ENTRADA DE DATOS (CON AUTO-LIMPIEZA CORREGIDA) =================
 
-if st.button("📤 Enviar al Historial"):
-    nuevo_registro = extraer_datos(texto_pegado)
+# 1. Definimos la función que hace el trabajo SUCIO (Guardar y Limpiar)
+def procesar_guardado():
+    # Leemos los valores directamente del estado
+    texto_actual = st.session_state.input_texto
+    cuenta_actual = st.session_state.input_cuenta
+    
+    if not texto_actual.strip():
+        st.warning("El campo de texto está vacío.")
+        return
+
+    nuevo_registro = extraer_datos(texto_actual)
     
     insert_reg_sql = """
         INSERT INTO registros (
@@ -316,20 +322,25 @@ if st.button("📤 Enviar al Historial"):
         "imp": nuevo_registro["importe"],
         "clas": nuevo_registro["clasificacion"],
         "rnc": nuevo_registro["rnc"],
-        "cta": cuenta_objetal_manual,
+        "cta": cuenta_actual,
         "uid": st.session_state.usuario_id
     }
     
     if run_query(insert_reg_sql, params_reg):
-        st.success("Registro guardado")
+        st.toast("✅ Registro guardado exitosamente") # Usamos toast, es más moderno y no se borra al recargar
         
-        # 2. 🧹 AQUÍ OCURRE LA MAGIA: Limpiamos los campos automáticamente
+        # 🧹 AQUÍ SÍ PODEMOS LIMPIAR (Porque estamos dentro de la callback)
         st.session_state.input_texto = ""
         st.session_state.input_cuenta = ""
-        
-        time.sleep(0.5)
-        st.rerun()
 
+# 2. Dibujamos los Inputs (campos de texto)
+# OJO: No les ponemos valor por defecto, ellos leen de su 'key'
+st.text_area("📥 Pegue el texto aquí", key="input_texto")
+st.text_input("🏷️ Cuenta Objetal (llenado manual por auditor)", key="input_cuenta")
+
+# 3. El Botón (Magia: usamos 'on_click')
+# Al presionar, PRIMERO ejecuta la función 'procesar_guardado' y LUEGO recarga la página limpia.
+st.button("📤 Enviar al Historial", on_click=procesar_guardado)
 # ================= HISTORIAL =================
 st.markdown("---")
 st.subheader("📊 Historial")
@@ -459,9 +470,3 @@ if not df_export.empty:
     )
 else:
     st.write("No hay expedientes pendientes para exportar.")
-
-
-
-
-
-
