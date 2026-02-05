@@ -158,16 +158,16 @@ def crear_formulario_bienes_servicios(registro_id):
         
         st.session_state.form_id = registro_id
 
-    # 4. Botones rápidos
-    col_btn1, col_btn2 = st.columns(2)
-    with col_btn1:
-        if rnc.startswith("1") or rnc.startswith("4"):
-            if st.button("✔ Marcar a CC y CP"):
-                st.session_state.form_bs.loc[0, ["CC","CP"]] = "√"
-    with col_btn2:
-        if rnc.startswith("1"):
-            if st.button("✔ Marcar DGII/TSS/RPE"):
-                st.session_state.form_bs.loc[0, ["DGII","TSS","RPE"]] = "√"
+    # 4. Botones de ayuda rápida (Verticales: Uno debajo del otro)
+    # Quitamos 'st.columns' para que se apilen verticalmente
+    
+    if rnc.startswith("1") or rnc.startswith("4"):
+        if st.button("✔ Resetear a CC y CP"):
+            st.session_state.form_bs.loc[0, ["CC","CP"]] = "√"
+            
+    if rnc.startswith("4"):
+        if st.button("✔ Resetear DGII/TSS/RPE"):
+            st.session_state.form_bs.loc[0, ["DGII","TSS","RPE"]] = "√"
 
     # 5. El Editor
     config = {col: st.column_config.SelectboxColumn(options=["√","N/A"], width=70) for col in columnas}
@@ -451,6 +451,7 @@ if not df_export.empty:
     )
 else:
     st.write("No hay expedientes pendientes para exportar.")
+
 
 
 
