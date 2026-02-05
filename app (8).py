@@ -468,3 +468,26 @@ if st.button("📥 Exportar TODOS los expedientes a Excel"):
         file_name="Auditoria_Completa.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
+st.markdown("---")
+st.markdown("## 👥 Exportar Usuarios del Sistema")
+
+if st.button("📤 Exportar usuarios a Excel"):
+
+    df_usuarios = pd.read_sql_query("""
+        SELECT id, nombre, usuario, password
+        FROM usuarios
+        ORDER BY id
+    """, conn)
+
+    output_users = BytesIO()
+
+    with pd.ExcelWriter(output_users, engine="xlsxwriter") as writer:
+        df_usuarios.to_excel(writer, index=False, sheet_name="Usuarios")
+
+    st.download_button(
+        "⬇️ Descargar usuarios",
+        output_users.getvalue(),
+        file_name="Usuarios_Sistema.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
