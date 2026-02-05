@@ -83,7 +83,10 @@ if "usuario_id" not in cols:
     cursor.execute("ALTER TABLE registros ADD COLUMN usuario_id INTEGER")
     conn.commit()
     
-if "estado" not in columnas_existentes:
+cursor.execute("PRAGMA table_info(registros)")
+cols = [c[1] for c in cursor.fetchall()]
+
+if "estado" not in cols:
     cursor.execute("ALTER TABLE registros ADD COLUMN estado TEXT DEFAULT 'En proceso'")
     conn.commit()
     
@@ -283,7 +286,10 @@ else:
 
     # 🗑 BORRAR
     if st.button("🗑️ Borrar expediente seleccionado"):
-        cursor.execute("DELETE FROM registros WHERE id=?", (registro_sel,))
+        cursor.execute(
+    "DELETE FROM registros WHERE id=? AND usuario_id=?",
+    (registro_sel, st.session_state.usuario_id)
+)
         conn.commit()
         st.warning("Expediente eliminado")
         time.sleep(1)
@@ -309,14 +315,23 @@ else:
     st.markdown("### 📄 Vista previa del expediente")
 
     datos_editados = st.data_editor(
-        datos_exp,
-        disabled=["Institución","Estructura Programática","Número Libramiento","Importe"],
-        use_container_width=True,
-        key=f"preview_{registro_sel}"
+    datos_exp,
+    disabled=["Institución","Estructura Programática","Número Libramiento","Importe"],
+    use_container_width=True,
+    key=f"preview_{registro_sel}"
+)
+
+nueva_cuenta = datos_editados.iloc[0]["Cuenta Objetal"]
+cuenta_actual = datos_exp.iloc[0]["Cuenta Objetal"]
+
+if nueva_cuenta != cuenta_actual:
+    cursor.execute(
+        "UPDATE registros SET cuenta_objetal=? WHERE id=?",
+        (nueva_cuenta, registro_sel)
     )
-   
     conn.commit()
     st.success("Cuenta objetal actualizada")
+
 
 
     # guardar edición de cuenta objetal
@@ -453,6 +468,11 @@ if st.button("📥 Exportar TODOS los expedientes a Excel"):
     ORDER BY r.id DESC
 """, conn, params=(st.session_state.usuario_id,))
 
+output = BytesIO()
+with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+    df_export.to_excel(writer, index=False, sheet_name="Auditoria")
+
+buffer = output.getvalue()
 
     st.download_button(
         "⬇️ Descargar Excel General",
@@ -460,7 +480,3 @@ if st.button("📥 Exportar TODOS los expedientes a Excel"):
         file_name="Auditoria_Completa.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
-
-
-
-
