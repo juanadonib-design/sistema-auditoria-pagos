@@ -132,6 +132,23 @@ def extraer_datos(texto):
         "clasificacion": clasificacion,
         "rnc": rnc_final
     }
+
+# 🔵 CSS
+st.markdown("""
+<style>
+.badge-en-uso {
+    display: inline-block;
+    background-color: #28a745;
+    color: white;
+    padding: 4px 15px;
+    border-radius: 50px;
+    font-size: 14px;
+    font-weight: bold;
+    margin-left: 15px;
+    vertical-align: middle;
+}
+</style>
+""", unsafe_allow_html=True)
 # ================= FORMULARIO INTELIGENTE (CARGA DATOS PREVIOS) =================
 # PEGA ESTO ARRIBA, ANTES DEL LOGIN
 def crear_formulario_bienes_servicios(registro_id):
@@ -226,23 +243,6 @@ def crear_formulario_bienes_servicios(registro_id):
             st.success("Cambios guardados correctamente")
             time.sleep(0.5)
             st.rerun()
-# 🔵 CSS
-st.markdown("""
-<style>
-.badge-en-uso {
-    display: inline-block;
-    background-color: #28a745;
-    color: white;
-    padding: 4px 15px;
-    border-radius: 50px;
-    font-size: 14px;
-    font-weight: bold;
-    margin-left: 15px;
-    vertical-align: middle;
-}
-</style>
-""", unsafe_allow_html=True)
-
 # ================= LOGIN / REGISTRO =================
 
 # ---------- LOGIN ----------
@@ -466,5 +466,6 @@ if not df_export.empty:
     )
 else:
     st.write("No hay expedientes pendientes para exportar.")
+
 
 
