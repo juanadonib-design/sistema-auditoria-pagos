@@ -202,12 +202,19 @@ if "usuario_id" not in st.session_state and st.session_state.pantalla == "regist
     st.stop()
 
 # ================= APP PRINCIPAL =================
-st.title("🧾 Sistema de Apoyo a la Auditoría de Pagos")
+# Creamos dos columnas: una grande para el título y una pequeña para el botón
+col1, col2 = st.columns([8, 1])
 
-# Salir
-if st.sidebar.button("Cerrar Sesión"):
-    st.session_state.clear()
-    st.rerun()
+with col1:
+    st.title("🧾 Sistema de Apoyo a la Auditoría de Pagos")
+
+with col2:
+    # Un poco de espacio vertical para alinear visualmente el botón con el título
+    st.write("") 
+    st.write("") 
+    if st.button("Cerrar Sesión"):
+        st.session_state.clear()
+        st.rerun()
 
 # ================= ENTRADA DE DATOS =================
 texto_pegado = st.text_area("📥 Pegue el texto aquí")
@@ -420,3 +427,4 @@ if st.button("📥 Exportar a Excel"):
         df_export.to_excel(writer, index=False, sheet_name="Auditoria")
     
     st.download_button("⬇️ Descargar Excel", output.getvalue(), "Auditoria_Cloud.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
