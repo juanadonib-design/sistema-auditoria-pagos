@@ -294,12 +294,14 @@ with col2:
         st.session_state.clear()
         st.rerun()
 
-# ================= ENTRADA DE DATOS =================
-texto_pegado = st.text_area("📥 Pegue el texto aquí")
-cuenta_objetal_manual = st.text_input("🏷️ Cuenta Objetal (llenado manual por auditor)")
+# ================= ENTRADA DE DATOS (AUTO-LIMPIEZA) =================
+# 1. Agregamos 'key' para poder limpiar los campos después
+texto_pegado = st.text_area("📥 Pegue el texto aquí", key="input_texto")
+cuenta_objetal_manual = st.text_input("🏷️ Cuenta Objetal (llenado manual por auditor)", key="input_cuenta")
 
 if st.button("📤 Enviar al Historial"):
     nuevo_registro = extraer_datos(texto_pegado)
+    
     insert_reg_sql = """
         INSERT INTO registros (
             institucion, estructura_programatica, numero_libramiento,
@@ -317,8 +319,14 @@ if st.button("📤 Enviar al Historial"):
         "cta": cuenta_objetal_manual,
         "uid": st.session_state.usuario_id
     }
+    
     if run_query(insert_reg_sql, params_reg):
         st.success("Registro guardado")
+        
+        # 2. 🧹 AQUÍ OCURRE LA MAGIA: Limpiamos los campos automáticamente
+        st.session_state.input_texto = ""
+        st.session_state.input_cuenta = ""
+        
         time.sleep(0.5)
         st.rerun()
 
@@ -451,6 +459,7 @@ if not df_export.empty:
     )
 else:
     st.write("No hay expedientes pendientes para exportar.")
+
 
 
 
