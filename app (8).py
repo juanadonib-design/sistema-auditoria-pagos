@@ -1,195 +1,84 @@
 import streamlit as st
 import pandas as pd
 import re
-import sqlite3
 import time
 import unicodedata
 from io import BytesIO
 import hashlib
+from sqlalchemy import text
+
+# ================= CONFIGURACIÓN INICIAL =================
+st.set_page_config(page_title="Sistema Auditoría de Pagos", layout="wide")
 
 if "pantalla" not in st.session_state:
     st.session_state.pantalla = "login"
 
+# ================= CONEXIÓN A BASE DE DATOS (SUPABASE) =================
+# Busca automáticamente la sección [connections.supabase] en secrets.toml
+conn = st.connection("supabase", type="sql")
+
+def run_query(query_sql, params=None):
+    """Función auxiliar para ejecutar INSERT, UPDATE o DELETE"""
+    try:
+        with conn.session as session:
+            if params:
+                session.execute(text(query_sql), params)
+            else:
+                session.execute(text(query_sql))
+            session.commit()
+            return True
+    except Exception as e:
+        st.error(f"Error en base de datos: {e}")
+        return False
+
+def get_data(query_sql, params=None):
+    """Función auxiliar para leer datos (SELECT) sin cache"""
+    return conn.query(query_sql, params=params, ttl=0)
+
+# ================= CREACIÓN DE TABLAS (POSTGRESQL) =================
+def inicializar_tablas():
+    # Tabla Usuarios
+    run_query("""
+        CREATE TABLE IF NOT EXISTS usuarios (
+            id SERIAL PRIMARY KEY,
+            nombre TEXT,
+            usuario TEXT UNIQUE,
+            password TEXT
+        );
+    """)
+    # Tabla Registros
+    run_query("""
+        CREATE TABLE IF NOT EXISTS registros (
+            id SERIAL PRIMARY KEY,
+            institucion TEXT,
+            estructura_programatica TEXT,
+            numero_libramiento TEXT,
+            importe TEXT,
+            clasificacion TEXT,
+            rnc TEXT,
+            cuenta_objetal TEXT,
+            usuario_id INTEGER,
+            estado TEXT DEFAULT 'En proceso'
+        );
+    """)
+    # Tabla Formulario Bienes y Servicios
+    run_query("""
+        CREATE TABLE IF NOT EXISTS formulario_bienes_servicios (
+            id SERIAL PRIMARY KEY,
+            registro_id INTEGER UNIQUE,
+            CC TEXT, CP TEXT, OFI TEXT, FACT TEXT, FIRMA_DIGITAL TEXT, Recep TEXT,
+            RPE TEXT, DGII TEXT, TSS TEXT, OC TEXT, CONT TEXT, TITULO TEXT,
+            DETE TEXT, JURI_INMO TEXT, TASACION TEXT, APROB_PRESI TEXT, VIAJE_PRESI TEXT
+        );
+    """)
+
+# Ejecutamos la creación de tablas al inicio (por si no existen)
+inicializar_tablas()
+
+# ================= FUNCIONES DE APOYO =================
 def encriptar_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
 
-st.set_page_config(page_title="Sistema Auditoría de Pagos", layout="wide")
-st.title("🧾 Sistema de Apoyo a la Auditoría de Pagos")
-
-# 🔵 CSS
-st.markdown("""
-<style>
-.badge-en-uso {
-    display: inline-block;
-    background-color: #28a745;
-    color: white;
-    padding: 4px 15px;
-    border-radius: 50px;
-    font-size: 14px;
-    font-weight: bold;
-    margin-left: 15px;
-    vertical-align: middle;
-}
-</style>
-""", unsafe_allow_html=True)
-
-# ================= BASE DE DATOS =================
-conn = sqlite3.connect("auditoria.db", check_same_thread=False)
-conn.execute("PRAGMA foreign_keys = ON")
-cursor = conn.cursor()
-
-# 🔧 CREAR TABLA
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS registros (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    institucion TEXT,
-    estructura_programatica TEXT,
-    numero_libramiento TEXT,
-    importe TEXT,
-    clasificacion TEXT,
-    rnc TEXT
-)
-""")
-# 🔐 TABLA DE USUARIOS
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS usuarios (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    nombre TEXT,
-    usuario TEXT UNIQUE,
-    password TEXT
-)
-""")
-
-# 🔧 SI LA TABLA ES VIEJA Y NO TIENE RNC → LA AGREGA
-cursor.execute("PRAGMA table_info(registros)")
-columnas_existentes = [col[1] for col in cursor.fetchall()]
-if "rnc" not in columnas_existentes:
-    cursor.execute("ALTER TABLE registros ADD COLUMN rnc TEXT")
-    conn.commit()
-    
-# 🔧 Si la BD es vieja y no tiene cuenta_objetal → la agrega
-cursor.execute("PRAGMA table_info(registros)")
-columnas_existentes = [col[1] for col in cursor.fetchall()]
-
-if "cuenta_objetal" not in columnas_existentes:
-    cursor.execute("ALTER TABLE registros ADD COLUMN cuenta_objetal TEXT")
-    conn.commit()
-    
-# 🔗 Relacionar registros con usuario
-cursor.execute("PRAGMA table_info(registros)")
-cols = [c[1] for c in cursor.fetchall()]
-
-if "usuario_id" not in cols:
-    cursor.execute("ALTER TABLE registros ADD COLUMN usuario_id INTEGER")
-    conn.commit()
-    
-cursor.execute("PRAGMA table_info(registros)")
-cols = [c[1] for c in cursor.fetchall()]
-
-if "estado" not in cols:
-    cursor.execute("ALTER TABLE registros ADD COLUMN estado TEXT DEFAULT 'En proceso'")
-    conn.commit()
-    
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS formulario_bienes_servicios (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    registro_id INTEGER UNIQUE,
-    CC TEXT, CP TEXT, OFI TEXT, FACT TEXT, FIRMA_DIGITAL TEXT, Recep TEXT,
-    RPE TEXT, DGII TEXT, TSS TEXT, OC TEXT, CONT TEXT, TITULO TEXT,
-    DETE TEXT, JURI_INMO TEXT, TASACION TEXT, APROB_PRESI TEXT, VIAJE_PRESI TEXT,
-    FOREIGN KEY(registro_id) REFERENCES registros(id) ON DELETE CASCADE
-)
-""")
-conn.commit()
-
-# ================= LOGIN / REGISTRO =================
-
-# ---------- LOGIN ----------
-if "usuario_id" not in st.session_state and st.session_state.pantalla == "login":
-
-    st.title("🔐 Iniciar sesión")
-
-    # Usamos strip() al leer para quitar espacios accidentales
-    user = st.text_input("Usuario", key="login_user")
-    pwd  = st.text_input("Contraseña", type="password", key="login_pwd")
-
-    if st.button("Ingresar"):
-        # Limpieza de seguridad
-        user_clean = user.strip()
-        pwd_clean = pwd.strip()
-
-        # Usamos un cursor fresco para esta operación
-        cur = conn.cursor()
-        u = cur.execute(
-            "SELECT id FROM usuarios WHERE usuario=? AND password=?",
-            (user_clean, encriptar_password(pwd_clean))
-        ).fetchone()
-
-        if u:
-            st.session_state.usuario_id = u[0]
-            st.rerun()
-        else:
-            st.error("Datos incorrectos. Verifica tu usuario y contraseña.")
-
-    if st.button("¿No tienes cuenta? Regístrate"):
-        st.session_state.pantalla = "registro"
-        st.rerun()
-
-    st.stop()
-
-# ---------- REGISTRO ----------
-if "usuario_id" not in st.session_state and st.session_state.pantalla == "registro":
-
-    st.subheader("🆕 Crear cuenta")
-
-    nuevo_nombre = st.text_input("Nombre completo", key="reg_nombre")
-    nuevo_user   = st.text_input("Usuario", key="reg_user")
-    nuevo_pwd    = st.text_input("Contraseña", type="password", key="reg_pwd")
-
-    if st.button("➕ Crear cuenta"):
-        # Limpieza de seguridad
-        nombre_clean = nuevo_nombre.strip()
-        user_clean = nuevo_user.strip()
-        pwd_clean = nuevo_pwd.strip()
-
-        # 1️⃣ Verificar campos vacíos
-        if not nombre_clean or not user_clean or not pwd_clean:
-            st.error("Todos los campos son obligatorios")
-
-        else:
-            cur = conn.cursor()
-            # 2️⃣ Verificar si ya existe
-            existe = cur.execute(
-                "SELECT id FROM usuarios WHERE usuario=?",
-                (user_clean,)
-            ).fetchone()
-
-            if existe:
-                st.error("Ese usuario ya existe. Intenta con otro.")
-
-            else:
-                # 3️⃣ Guardar usuario encriptado
-                try:
-                    cur.execute(
-                        "INSERT INTO usuarios (nombre, usuario, password) VALUES (?, ?, ?)",
-                        (nombre_clean, user_clean, encriptar_password(pwd_clean))
-                    )
-                    conn.commit()
-                    
-                    st.success("Cuenta creada correctamente. Ahora inicia sesión.")
-                    time.sleep(1) # Breve pausa para ver el mensaje
-                    st.session_state.pantalla = "login"
-                    st.rerun()
-                except sqlite3.Error as e:
-                    st.error(f"Error en la base de datos: {e}")
-
-    if st.button("⬅ Volver al login"):
-        st.session_state.pantalla = "login"
-        st.rerun()
-
-    st.stop()
-    
-# ================= EXTRACCIÓN =================
 def extraer_datos(texto):
     lineas = [l.strip() for l in texto.split('\n') if l.strip()]
     institucion_final = "No encontrado"
@@ -231,33 +120,124 @@ def extraer_datos(texto):
         "rnc": rnc_final
     }
 
-# ================= ENTRADA =================
+# 🔵 CSS
+st.markdown("""
+<style>
+.badge-en-uso {
+    display: inline-block;
+    background-color: #28a745;
+    color: white;
+    padding: 4px 15px;
+    border-radius: 50px;
+    font-size: 14px;
+    font-weight: bold;
+    margin-left: 15px;
+    vertical-align: middle;
+}
+</style>
+""", unsafe_allow_html=True)
+
+# ================= LOGIN / REGISTRO =================
+
+# ---------- LOGIN ----------
+if "usuario_id" not in st.session_state and st.session_state.pantalla == "login":
+    st.title("🔐 Iniciar sesión (Nube)")
+
+    user = st.text_input("Usuario", key="login_user")
+    pwd  = st.text_input("Contraseña", type="password", key="login_pwd")
+
+    if st.button("Ingresar"):
+        user_clean = user.strip()
+        pwd_clean = pwd.strip()
+        
+        # Consulta adaptada a Postgres (:parametro)
+        sql = "SELECT id FROM usuarios WHERE usuario = :u AND password = :p"
+        df_user = get_data(sql, params={"u": user_clean, "p": encriptar_password(pwd_clean)})
+
+        if not df_user.empty:
+            st.session_state.usuario_id = int(df_user.iloc[0]["id"])
+            st.rerun()
+        else:
+            st.error("Datos incorrectos")
+
+    if st.button("¿No tienes cuenta? Regístrate"):
+        st.session_state.pantalla = "registro"
+        st.rerun()
+    st.stop()
+
+# ---------- REGISTRO ----------
+if "usuario_id" not in st.session_state and st.session_state.pantalla == "registro":
+    st.subheader("🆕 Crear cuenta")
+    nuevo_nombre = st.text_input("Nombre completo", key="reg_nombre")
+    nuevo_user   = st.text_input("Usuario", key="reg_user")
+    nuevo_pwd    = st.text_input("Contraseña", type="password", key="reg_pwd")
+
+    if st.button("➕ Crear cuenta"):
+        if not nuevo_nombre or not nuevo_user or not nuevo_pwd:
+            st.error("Todos los campos son obligatorios")
+        else:
+            # Verificar si existe
+            check_sql = "SELECT id FROM usuarios WHERE usuario = :u"
+            df_check = get_data(check_sql, params={"u": nuevo_user.strip()})
+            
+            if not df_check.empty:
+                st.error("Ese usuario ya existe")
+            else:
+                # Insertar usuario
+                insert_sql = "INSERT INTO usuarios (nombre, usuario, password) VALUES (:n, :u, :p)"
+                params = {
+                    "n": nuevo_nombre.strip(),
+                    "u": nuevo_user.strip(),
+                    "p": encriptar_password(nuevo_pwd.strip())
+                }
+                if run_query(insert_sql, params):
+                    st.success("Cuenta creada correctamente")
+                    time.sleep(1)
+                    st.session_state.pantalla = "login"
+                    st.rerun()
+
+    if st.button("⬅ Volver al login"):
+        st.session_state.pantalla = "login"
+        st.rerun()
+    st.stop()
+
+# ================= APP PRINCIPAL =================
+st.title("🧾 Sistema de Apoyo a la Auditoría de Pagos")
+
+# Salir
+if st.sidebar.button("Cerrar Sesión"):
+    st.session_state.clear()
+    st.rerun()
+
+# ================= ENTRADA DE DATOS =================
 texto_pegado = st.text_area("📥 Pegue el texto aquí")
 cuenta_objetal_manual = st.text_input("🏷️ Cuenta Objetal (llenado manual por auditor)")
 
 if st.button("📤 Enviar al Historial"):
     nuevo_registro = extraer_datos(texto_pegado)
-
-    cursor.execute("""
-INSERT INTO registros (
-    institucion, estructura_programatica, numero_libramiento,
-    importe, clasificacion, rnc, cuenta_objetal, usuario_id
-)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-""", (
-    nuevo_registro["institucion"],
-    nuevo_registro["estructura_programatica"],
-    nuevo_registro["numero_libramiento"],
-    nuevo_registro["importe"],
-    nuevo_registro["clasificacion"],
-    nuevo_registro["rnc"],
-    cuenta_objetal_manual,
-    st.session_state.usuario_id
-))
-    conn.commit()
-
-    st.success("Registro guardado")
-    st.rerun()
+    
+    insert_reg_sql = """
+        INSERT INTO registros (
+            institucion, estructura_programatica, numero_libramiento,
+            importe, clasificacion, rnc, cuenta_objetal, usuario_id
+        )
+        VALUES (:inst, :est, :lib, :imp, :clas, :rnc, :cta, :uid)
+    """
+    params_reg = {
+        "inst": nuevo_registro["institucion"],
+        "est": nuevo_registro["estructura_programatica"],
+        "lib": nuevo_registro["numero_libramiento"],
+        "imp": nuevo_registro["importe"],
+        "clas": nuevo_registro["clasificacion"],
+        "rnc": nuevo_registro["rnc"],
+        "cta": cuenta_objetal_manual,
+        "uid": st.session_state.usuario_id
+    }
+    
+    if run_query(insert_reg_sql, params_reg):
+        st.success("Registro guardado")
+        time.sleep(0.5)
+        st.rerun()
 
 # ================= HISTORIAL =================
 st.markdown("---")
@@ -270,28 +250,23 @@ def colorear_estado(val):
         return "background-color:#e6ffe6; color:green; font-weight:bold"
     return ""
 
-registro_sel = None
+# Cargar historial del usuario
+historial_sql = """
+    SELECT id, institucion, numero_libramiento, estructura_programatica, 
+           importe, cuenta_objetal, clasificacion, estado
+    FROM registros
+    WHERE usuario_id = :uid
+    ORDER BY id DESC
+"""
+df_historial = get_data(historial_sql, params={"uid": st.session_state.usuario_id})
 
-df_historial = pd.read_sql_query("""
-SELECT 
-    id,
-    institucion,
-    numero_libramiento,
-    estructura_programatica,
-    importe,
-    cuenta_objetal,
-    clasificacion,
-    estado
-FROM registros
-WHERE usuario_id = ?
-ORDER BY id DESC
-""", conn, params=(st.session_state.usuario_id,))
+registro_sel = None
 
 if df_historial.empty:
     st.info("No hay expedientes registrados todavía.")
 else:
     st.dataframe(
-        df_historial.style.applymap(colorear_estado, subset=["estado"]),
+        df_historial.style.map(colorear_estado, subset=["estado"]),
         use_container_width=True
     )
 
@@ -303,209 +278,145 @@ else:
     
     # 🗑 BORRAR
     if st.button("🗑️ Borrar expediente seleccionado"):
-        cursor.execute(
-    "DELETE FROM registros WHERE id=? AND usuario_id=?",
-    (registro_sel, st.session_state.usuario_id)
-)
-        conn.commit()
+        del_sql = "DELETE FROM registros WHERE id = :id AND usuario_id = :uid"
+        run_query(del_sql, params={"id": int(registro_sel), "uid": st.session_state.usuario_id})
         st.warning("Expediente eliminado")
         time.sleep(1)
         st.rerun()
 
     # ================= VISTA PREVIA =================
-    datos_exp = df_historial[df_historial.id == registro_sel][[
-        "institucion",
-        "estructura_programatica",
-        "numero_libramiento",
-        "importe",
-        "cuenta_objetal"
-    ]]
-
-    datos_exp.columns = [
-        "Institución",
-        "Estructura Programática",
-        "Número Libramiento",
-        "Importe",
-        "Cuenta Objetal"
-    ]
-
-    st.markdown("### 📄 Vista previa del expediente")
-
-    datos_editados = st.data_editor(
-    datos_exp,
-    disabled=["Institución","Estructura Programática","Número Libramiento","Importe"],
-    use_container_width=True,
-    key=f"preview_{registro_sel}"
-)
-    # 🔄 Guardar edición de cuenta objetal
-    nueva_cuenta = datos_editados.iloc[0]["Cuenta Objetal"]
-    cuenta_actual = datos_exp.iloc[0]["Cuenta Objetal"]
-
-    if nueva_cuenta != cuenta_actual:
-        cursor.execute(
-            "UPDATE registros SET cuenta_objetal=? WHERE id=? AND usuario_id=?",
-            (nueva_cuenta, registro_sel, st.session_state.usuario_id)
+    if registro_sel:
+        datos_exp = df_historial[df_historial.id == registro_sel][[
+            "institucion", "estructura_programatica", "numero_libramiento", "importe", "cuenta_objetal"
+        ]]
+        
+        st.markdown("### 📄 Vista previa del expediente")
+        datos_editados = st.data_editor(
+            datos_exp,
+            disabled=["institucion","estructura_programatica","numero_libramiento","importe"],
+            use_container_width=True,
+            key=f"preview_{registro_sel}"
         )
-        conn.commit()
-        st.success("Cuenta objetal actualizada")
+        
+        # 🔄 Guardar edición de cuenta objetal
+        nueva_cuenta = datos_editados.iloc[0]["cuenta_objetal"]
+        cuenta_actual = datos_exp.iloc[0]["cuenta_objetal"]
+
+        if nueva_cuenta != cuenta_actual:
+            upd_sql = "UPDATE registros SET cuenta_objetal = :cta WHERE id = :id AND usuario_id = :uid"
+            run_query(upd_sql, params={"cta": nueva_cuenta, "id": int(registro_sel), "uid": st.session_state.usuario_id})
+            st.success("Cuenta objetal actualizada")
 
 # ================= FORMULARIO =================
 def crear_formulario_bienes_servicios(registro_id):
-    st.markdown(
-    '### 📋 Formulario de Bienes y Servicios <span class="badge-en-uso">En uso</span>',
-    unsafe_allow_html=True
-)
+    st.markdown('### 📋 Formulario de Bienes y Servicios <span class="badge-en-uso">En uso</span>', unsafe_allow_html=True)
 
     columnas = ["CC","CP","OFI","FACT","FIRMA_DIGITAL","Recep","RPE","DGII","TSS",
-                "OC","CONT","TITULO","DETE","JURI_INMO","TASACION",
-                "APROB_PRESI","VIAJE_PRESI"]
+                "OC","CONT","TITULO","DETE","JURI_INMO","TASACION","APROB_PRESI","VIAJE_PRESI"]
 
-    # 🔹 Obtener RNC
-    rnc_df = pd.read_sql_query(
-        "SELECT rnc FROM registros WHERE id=?",
-        conn,
-        params=(registro_id,)
-    )
-    if rnc_df.empty:
-        st.error("No se encontró el RNC del expediente")
+    # Obtener RNC
+    rnc_sql = "SELECT rnc FROM registros WHERE id = :id"
+    df_rnc = get_data(rnc_sql, params={"id": int(registro_id)})
+    
+    if df_rnc.empty:
+        st.error("Error cargando RNC")
         return
 
-    rnc = str(rnc_df.iloc[0]["rnc"])
+    rnc = str(df_rnc.iloc[0]["rnc"])
 
-    # =====================================================
-    # 🎯 DATAFRAME EN MEMORIA
-    # =====================================================
+    # Cargar datos previos del formulario si existen
+    form_sql = "SELECT * FROM formulario_bienes_servicios WHERE registro_id = :rid"
+    df_previo = get_data(form_sql, params={"rid": int(registro_id)})
+
+    # Lógica de inicialización
     if "form_bs" not in st.session_state or st.session_state.get("form_id") != registro_id:
-
-        base = {col: "N/A" for col in columnas}
-
-        if rnc.startswith("1"):
-            base.update({"OFI":"√","FACT":"√","RPE":"√","DGII":"√","TSS":"√"})
-        elif rnc.startswith("4"):
-            base.update({"OFI":"√","FACT":"√"})
-
-        st.session_state.form_bs = pd.DataFrame([base])
+        if not df_previo.empty:
+            # Si ya existe en DB, cargarlo
+            data_dict = df_previo.iloc[0].to_dict()
+            # Filtramos solo las columnas del formulario
+            filtered_data = {k: data_dict[k] for k in columnas if k in data_dict}
+            st.session_state.form_bs = pd.DataFrame([filtered_data])
+        else:
+            # Si es nuevo, lógica por defecto
+            base = {col: "N/A" for col in columnas}
+            if rnc.startswith("1"):
+                base.update({"OFI":"√","FACT":"√","RPE":"√","DGII":"√","TSS":"√"})
+            elif rnc.startswith("4"):
+                base.update({"OFI":"√","FACT":"√"})
+            st.session_state.form_bs = pd.DataFrame([base])
+        
         st.session_state.form_id = registro_id
 
-    # =====================================================
-    # 🔘 BOTONES AUTOMÁTICOS
-    # =====================================================
+    # Botones automáticos
     if rnc.startswith("1") or rnc.startswith("4"):
         if st.button("✔ Marcar CC y CP"):
             st.session_state.form_bs.loc[0, ["CC","CP"]] = "√"
-
     if rnc.startswith("4"):
         if st.button("✔ Marcar DGII, TSS y RPE"):
             st.session_state.form_bs.loc[0, ["DGII","TSS","RPE"]] = "√"
 
-    # =====================================================
-    # 🧾 EDITOR
-    # =====================================================
+    # Editor
     config = {col: st.column_config.SelectboxColumn(options=["√","N/A"], width=70) for col in columnas}
+    df_editado = st.data_editor(st.session_state.form_bs, column_config=config, hide_index=True, key="editor_bs")
 
-    df_editado = st.data_editor(
-        st.session_state.form_bs,
-        column_config=config,
-        hide_index=True,
-        key="editor_bs"
-    )
-
-    # =====================================================
-    # 💾 GUARDAR
-    # =====================================================
     if st.button("💾 Guardar Formulario"):
         datos = df_editado.iloc[0].to_dict()
+        
+        # Upsert (Insertar o Actualizar) para Postgres
+        upsert_sql = """
+            INSERT INTO formulario_bienes_servicios (
+                registro_id, CC, CP, OFI, FACT, FIRMA_DIGITAL, Recep, RPE, DGII, TSS, 
+                OC, CONT, TITULO, DETE, JURI_INMO, TASACION, APROB_PRESI, VIAJE_PRESI
+            ) VALUES (
+                :rid, :CC, :CP, :OFI, :FACT, :FIRMA_DIGITAL, :Recep, :RPE, :DGII, :TSS, 
+                :OC, :CONT, :TITULO, :DETE, :JURI_INMO, :TASACION, :APROB_PRESI, :VIAJE_PRESI
+            )
+            ON CONFLICT (registro_id) DO UPDATE SET
+                CC=EXCLUDED.CC, CP=EXCLUDED.CP, OFI=EXCLUDED.OFI, FACT=EXCLUDED.FACT,
+                FIRMA_DIGITAL=EXCLUDED.FIRMA_DIGITAL, Recep=EXCLUDED.Recep, RPE=EXCLUDED.RPE,
+                DGII=EXCLUDED.DGII, TSS=EXCLUDED.TSS, OC=EXCLUDED.OC, CONT=EXCLUDED.CONT,
+                TITULO=EXCLUDED.TITULO, DETE=EXCLUDED.DETE, JURI_INMO=EXCLUDED.JURI_INMO,
+                TASACION=EXCLUDED.TASACION, APROB_PRESI=EXCLUDED.APROB_PRESI, VIAJE_PRESI=EXCLUDED.VIAJE_PRESI;
+        """
+        
+        params_form = datos.copy()
+        params_form["rid"] = int(registro_id)
+        
+        run_query(upsert_sql, params_form)
 
-        cursor.execute("""
-            INSERT INTO formulario_bienes_servicios
-            (registro_id, CC, CP, OFI, FACT, FIRMA_DIGITAL, Recep, RPE, DGII, TSS, OC, CONT, TITULO, DETE, JURI_INMO, TASACION, APROB_PRESI, VIAJE_PRESI)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-            ON CONFLICT(registro_id) DO UPDATE SET
-            CC=excluded.CC, CP=excluded.CP, OFI=excluded.OFI, FACT=excluded.FACT,
-            FIRMA_DIGITAL=excluded.FIRMA_DIGITAL, Recep=excluded.Recep, RPE=excluded.RPE,
-            DGII=excluded.DGII, TSS=excluded.TSS, OC=excluded.OC, CONT=excluded.CONT,
-            TITULO=excluded.TITULO, DETE=excluded.DETE, JURI_INMO=excluded.JURI_INMO,
-            TASACION=excluded.TASACION, APROB_PRESI=excluded.APROB_PRESI, VIAJE_PRESI=excluded.VIAJE_PRESI
-        """, (registro_id, *datos.values()))
-
-        conn.commit()
-
-        # ✅ MARCAR EXPEDIENTE COMO COMPLETADO
-        cursor.execute(
-            "UPDATE registros SET estado='Completado' WHERE id=?",
-            (registro_id,)
-        )
-        conn.commit()
-
+        # Actualizar estado a completado
+        run_query("UPDATE registros SET estado='Completado' WHERE id = :id", params={"id": int(registro_id)})
+        
         st.success("Formulario guardado correctamente")
+        time.sleep(1)
+        st.rerun()
 
-
-# MOSTRAR FORMULARIO SOLO SI ES SB
+# Mostrar formulario si aplica
 if registro_sel:
     clasif = df_historial.loc[df_historial.id==registro_sel,"clasificacion"].values[0]
     if clasif == "SERVICIOS BASICOS":
         crear_formulario_bienes_servicios(registro_sel)
 
-# =====================================================
-# 📤 EXPORTACIÓN GENERAL DEL SISTEMA (DEBAJO DE FORMULARIOS)
-# =====================================================
-import io
-
+# ================= EXPORTACIÓN =================
 st.markdown("---")
-st.markdown("## 📤 Exportación General del Sistema")
+st.markdown("## 📤 Exportación General")
 
-if st.button("📥 Exportar TODOS los expedientes a Excel"):
-
-    df_export = pd.read_sql_query("""
-        SELECT
-            r.institucion,
-            r.estructura_programatica,
-            r.numero_libramiento,
-            r.importe,
-            r.cuenta_objetal,
-            r.clasificacion,
-            f.CC, f.CP, f.OFI, f.FACT, f.FIRMA_DIGITAL, f.Recep,
-            f.RPE, f.DGII, f.TSS, f.OC, f.CONT, f.TITULO,
-            f.DETE, f.JURI_INMO, f.TASACION, f.APROB_PRESI, f.VIAJE_PRESI
+if st.button("📥 Exportar a Excel"):
+    export_sql = """
+        SELECT r.institucion, r.estructura_programatica, r.numero_libramiento, 
+               r.importe, r.cuenta_objetal, r.clasificacion,
+               f.CC, f.CP, f.OFI, f.FACT, f.FIRMA_DIGITAL, f.Recep,
+               f.RPE, f.DGII, f.TSS, f.OC, f.CONT, f.TITULO,
+               f.DETE, f.JURI_INMO, f.TASACION, f.APROB_PRESI, f.VIAJE_PRESI
         FROM registros r
-        LEFT JOIN formulario_bienes_servicios f
-            ON r.id = f.registro_id
-        WHERE r.usuario_id = ?
+        LEFT JOIN formulario_bienes_servicios f ON r.id = f.registro_id
+        WHERE r.usuario_id = :uid
         ORDER BY r.id DESC
-    """, conn, params=(st.session_state.usuario_id,))
-
+    """
+    df_export = get_data(export_sql, params={"uid": st.session_state.usuario_id})
+    
     output = BytesIO()
-
     with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
         df_export.to_excel(writer, index=False, sheet_name="Auditoria")
-
-    st.download_button(
-        "⬇️ Descargar Excel General",
-        output.getvalue(),
-        file_name="Auditoria_Completa.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
-
-st.markdown("---")
-st.markdown("## 👥 Exportar Usuarios del Sistema")
-
-if st.button("📤 Exportar usuarios a Excel"):
-
-    df_usuarios = pd.read_sql_query("""
-        SELECT id, nombre, usuario, password
-        FROM usuarios
-        ORDER BY id
-    """, conn)
-
-    output_users = BytesIO()
-
-    with pd.ExcelWriter(output_users, engine="xlsxwriter") as writer:
-        df_usuarios.to_excel(writer, index=False, sheet_name="Usuarios")
-
-    st.download_button(
-        "⬇️ Descargar usuarios",
-        output_users.getvalue(),
-        file_name="Usuarios_Sistema.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
-
+    
+    st.download_button("⬇️ Descargar Excel", output.getvalue(), "Auditoria_Cloud.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
