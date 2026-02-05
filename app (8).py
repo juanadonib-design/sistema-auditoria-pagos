@@ -101,6 +101,7 @@ CREATE TABLE IF NOT EXISTS formulario_bienes_servicios (
 )
 """)
 conn.commit()
+
 # ================= LOGIN / REGISTRO =================
 
 # ---------- LOGIN ----------
@@ -108,20 +109,27 @@ if "usuario_id" not in st.session_state and st.session_state.pantalla == "login"
 
     st.title("🔐 Iniciar sesión")
 
+    # Usamos strip() al leer para quitar espacios accidentales
     user = st.text_input("Usuario", key="login_user")
     pwd  = st.text_input("Contraseña", type="password", key="login_pwd")
 
     if st.button("Ingresar"):
-        u = cursor.execute(
+        # Limpieza de seguridad
+        user_clean = user.strip()
+        pwd_clean = pwd.strip()
+
+        # Usamos un cursor fresco para esta operación
+        cur = conn.cursor()
+        u = cur.execute(
             "SELECT id FROM usuarios WHERE usuario=? AND password=?",
-            (user, encriptar_password(pwd))
+            (user_clean, encriptar_password(pwd_clean))
         ).fetchone()
 
         if u:
             st.session_state.usuario_id = u[0]
             st.rerun()
         else:
-            st.error("Datos incorrectos")
+            st.error("Datos incorrectos. Verifica tu usuario y contraseña.")
 
     if st.button("¿No tienes cuenta? Regístrate"):
         st.session_state.pantalla = "registro"
@@ -129,7 +137,7 @@ if "usuario_id" not in st.session_state and st.session_state.pantalla == "login"
 
     st.stop()
 
-    # ---------- REGISTRO ----------
+# ---------- REGISTRO ----------
 if "usuario_id" not in st.session_state and st.session_state.pantalla == "registro":
 
     st.subheader("🆕 Crear cuenta")
@@ -139,32 +147,41 @@ if "usuario_id" not in st.session_state and st.session_state.pantalla == "regist
     nuevo_pwd    = st.text_input("Contraseña", type="password", key="reg_pwd")
 
     if st.button("➕ Crear cuenta"):
+        # Limpieza de seguridad
+        nombre_clean = nuevo_nombre.strip()
+        user_clean = nuevo_user.strip()
+        pwd_clean = nuevo_pwd.strip()
 
         # 1️⃣ Verificar campos vacíos
-        if not nuevo_nombre or not nuevo_user or not nuevo_pwd:
+        if not nombre_clean or not user_clean or not pwd_clean:
             st.error("Todos los campos son obligatorios")
 
         else:
+            cur = conn.cursor()
             # 2️⃣ Verificar si ya existe
-            existe = cursor.execute(
+            existe = cur.execute(
                 "SELECT id FROM usuarios WHERE usuario=?",
-                (nuevo_user,)
+                (user_clean,)
             ).fetchone()
 
             if existe:
-                st.error("Ese usuario ya existe")
+                st.error("Ese usuario ya existe. Intenta con otro.")
 
             else:
                 # 3️⃣ Guardar usuario encriptado
-                cursor.execute(
-                    "INSERT INTO usuarios (nombre, usuario, password) VALUES (?, ?, ?)",
-                    (nuevo_nombre, nuevo_user, encriptar_password(nuevo_pwd))
-                )
-                conn.commit()
-
-                st.success("Cuenta creada correctamente")
-                st.session_state.pantalla = "login"
-                st.rerun()
+                try:
+                    cur.execute(
+                        "INSERT INTO usuarios (nombre, usuario, password) VALUES (?, ?, ?)",
+                        (nombre_clean, user_clean, encriptar_password(pwd_clean))
+                    )
+                    conn.commit()
+                    
+                    st.success("Cuenta creada correctamente. Ahora inicia sesión.")
+                    time.sleep(1) # Breve pausa para ver el mensaje
+                    st.session_state.pantalla = "login"
+                    st.rerun()
+                except sqlite3.Error as e:
+                    st.error(f"Error en la base de datos: {e}")
 
     if st.button("⬅ Volver al login"):
         st.session_state.pantalla = "login"
@@ -491,3 +508,4 @@ if st.button("📤 Exportar usuarios a Excel"):
         file_name="Usuarios_Sistema.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
