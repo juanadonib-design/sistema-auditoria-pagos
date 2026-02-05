@@ -283,6 +283,16 @@ else:
         df_historial["id"],
         format_func=lambda x: f"#{x} — {df_historial.loc[df_historial.id==x,'institucion'].values[0]}"
     )
+st.markdown("---")
+st.subheader("👥 Usuarios registrados en el sistema")
+
+df_users = pd.read_sql_query("""
+    SELECT id, nombre, usuario
+    FROM usuarios
+    ORDER BY id DESC
+""", conn)
+
+st.dataframe(df_users, use_container_width=True)
 
     # 🗑 BORRAR
     if st.button("🗑️ Borrar expediente seleccionado"):
@@ -480,3 +490,4 @@ st.download_button(
         file_name="Auditoria_Completa.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
