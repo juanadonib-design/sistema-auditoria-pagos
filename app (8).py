@@ -320,9 +320,9 @@ else:
     use_container_width=True,
     key=f"preview_{registro_sel}"
 )
-# 🔄 Guardar edición de cuenta objetal
-nueva_cuenta = datos_editados.iloc[0]["Cuenta Objetal"]
-cuenta_actual = datos_exp.iloc[0]["Cuenta Objetal"]
+    # 🔄 Guardar edición de cuenta objetal
+    nueva_cuenta = datos_editados.iloc[0]["Cuenta Objetal"]
+    cuenta_actual = datos_exp.iloc[0]["Cuenta Objetal"]
 
 if nueva_cuenta != cuenta_actual:
     cursor.execute(
@@ -472,6 +472,7 @@ st.download_button(
         file_name="Auditoria_Completa.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
 
 
 
