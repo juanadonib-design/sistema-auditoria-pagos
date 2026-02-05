@@ -87,14 +87,13 @@ def extraer_datos(texto):
     libramiento_final = "No encontrado"
     importe_final = "No encontrado"
     
-    # CORRECCIÓN AQUÍ: Debe empezar como "General" para que el filtro funcione
-    clasificacion = "General" 
+    # --- LÓGICA DE CLASIFICACIÓN ---
+    # 1. Empieza como General (para no mostrar formulario por error)
+    clasificacion = "General"
 
-    # 1. Buscamos el RNC
     rnc_match = re.search(r'\b\d{9,11}\b', texto)
     rnc_final = rnc_match.group(0) if rnc_match else ""
 
-    # ... (El resto de la búsqueda de institución, etc. sigue igual) ...
     for i, linea in enumerate(lineas):
         if re.search(r'\bINSTITUCI[ÓO]N\b', linea, re.IGNORECASE):
             if i + 1 < len(lineas):
@@ -112,8 +111,7 @@ def extraer_datos(texto):
     imp_match = re.search(r'RD\$?\s?[\d,]+\.\d{2}', texto)
     if imp_match: importe_final = imp_match.group(0)
 
-    # ================= CLASIFICACIÓN INTELIGENTE =================
-    # Ahora sí: Si el sistema encuentra las palabras clave, cambia "General" por "SERVICIOS BASICOS"
+    # 2. Si detecta palabras clave, cambia a SERVICIOS BASICOS
     texto_norm = unicodedata.normalize('NFD', texto.upper()).encode('ascii', 'ignore').decode('utf-8')
     
     patron_servicios = r'SERVICIOS?\s+BASICOS?'
@@ -168,7 +166,7 @@ def crear_formulario_bienes_servicios(registro_id):
         
         st.session_state.form_id = registro_id
 
-    # 4. Botones de ayuda rápida (Verticales)
+    # 4. Botones de ayuda rápida
     if rnc.startswith("1") or rnc.startswith("4"):
         if st.button("✔ Marcar CC y CP"):
             st.session_state.form_bs.loc[0, ["CC","CP"]] = "√"
@@ -235,7 +233,6 @@ st.markdown("""
 
 # ================= LOGIN / REGISTRO =================
 
-# ---------- LOGIN ----------
 if "usuario_id" not in st.session_state and st.session_state.pantalla == "login":
     st.title("🔐 Iniciar sesión (Nube)")
     user = st.text_input("Usuario", key="login_user")
@@ -258,7 +255,6 @@ if "usuario_id" not in st.session_state and st.session_state.pantalla == "login"
         st.rerun()
     st.stop()
 
-# ---------- REGISTRO ----------
 if "usuario_id" not in st.session_state and st.session_state.pantalla == "registro":
     st.subheader("🆕 Crear cuenta")
     nuevo_nombre = st.text_input("Nombre completo", key="reg_nombre")
@@ -357,9 +353,8 @@ historial_sql = """
 """
 df_historial = get_data(historial_sql, params={"uid": st.session_state.usuario_id})
 
-# --- CORRECCIÓN: Inicializar la variable SIEMPRE ---
+# --- INICIALIZAMOS VARIABLE ---
 registro_sel = None 
-# ---------------------------------------------------
 
 if df_historial.empty:
     st.info("No hay expedientes registrados todavía.")
@@ -389,14 +384,15 @@ if registro_sel:
         "importe", "cuenta_objetal", "clasificacion"
     ]]
     
-    st.markdown("### 📄 Vista previa del expediente")
+    st.markdown("### 📄 Vista previa y Clasificación")
     
+    # Configuramos el editor para cambiar la clasificación
     column_config = {
         "clasificacion": st.column_config.SelectboxColumn(
             "Clasificación",
             options=["General", "SERVICIOS BASICOS"], 
             width="medium",
-            help="Cambia a SERVICIOS BASICOS para ver el formulario"
+            help="Si cambias a SERVICIOS BASICOS, aparecerá el formulario abajo."
         )
     }
 
@@ -408,6 +404,7 @@ if registro_sel:
         key=f"preview_{registro_sel}"
     )
     
+    # Detectamos cambios
     if not datos_editados.equals(datos_exp):
         nueva_cuenta = datos_editados.iloc[0]["cuenta_objetal"]
         nueva_clasif = datos_editados.iloc[0]["clasificacion"]
@@ -418,17 +415,21 @@ if registro_sel:
             "id": int(registro_sel), "uid": st.session_state.usuario_id
         }
         if run_query(upd_sql, params_upd):
-            st.toast("✅ Expediente actualizado correctamente")
+            st.toast("✅ Clasificación actualizada. Recargando...")
             time.sleep(0.5)
             st.rerun()
 
-    # LÓGICA BLINDADA PARA MOSTRAR EL FORMULARIO
+    # LÓGICA PARA MOSTRAR EL FORMULARIO
     valor_actual_db = df_historial.loc[df_historial.id == registro_sel, "clasificacion"].values[0]
     clasif_limpia = str(valor_actual_db).strip().upper()
 
+    # Si es SERVICIOS BASICOS, mostramos el formulario
     if "SERVICIOS BASICOS" in clasif_limpia:
         st.markdown("---")
         crear_formulario_bienes_servicios(registro_sel)
+    else:
+        # AVISO IMPORTANTE PARA EL USUARIO
+        st.info("ℹ️ Este expediente es 'General'. Si necesitas llenar el formulario, cambia la Clasificación en la tabla de arriba a 'SERVICIOS BASICOS'.")
 
 # ================= EXPORTACIÓN =================
 st.markdown("---")
@@ -467,6 +468,3 @@ if not df_export.empty:
     )
 else:
     st.write("No hay expedientes pendientes para exportar.")
-
-
-
