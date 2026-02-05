@@ -327,14 +327,14 @@ else:
             run_query(upd_sql, params={"cta": nueva_cuenta, "id": int(registro_sel), "uid": st.session_state.usuario_id})
             st.success("Cuenta objetal actualizada")
 
-# ================= FORMULARIO =================
+# ================= FORMULARIO INTELIGENTE (CARGA DATOS PREVIOS) =================
 def crear_formulario_bienes_servicios(registro_id):
     st.markdown('### 📋 Formulario de Bienes y Servicios <span class="badge-en-uso">En uso</span>', unsafe_allow_html=True)
 
     columnas = ["CC","CP","OFI","FACT","FIRMA_DIGITAL","Recep","RPE","DGII","TSS",
                 "OC","CONT","TITULO","DETE","JURI_INMO","TASACION","APROB_PRESI","VIAJE_PRESI"]
 
-    # Obtener RNC
+    # 1. Obtener el RNC para saber qué casillas marcar por defecto (si es nuevo)
     rnc_sql = "SELECT rnc FROM registros WHERE id = :id"
     df_rnc = get_data(rnc_sql, params={"id": int(registro_id)})
     
@@ -344,45 +344,65 @@ def crear_formulario_bienes_servicios(registro_id):
 
     rnc = str(df_rnc.iloc[0]["rnc"])
 
-    # Cargar datos previos del formulario si existen
+    # 2. BUSCAR SI YA EXISTE UN FORMULARIO GUARDADO
     form_sql = "SELECT * FROM formulario_bienes_servicios WHERE registro_id = :rid"
     df_previo = get_data(form_sql, params={"rid": int(registro_id)})
 
-    # Lógica de inicialización
+    # 3. Lógica de Inicialización (Solo corre si cambiamos de expediente)
+    #    Si el ID en sesión es diferente al seleccionado, recargamos los datos.
     if "form_bs" not in st.session_state or st.session_state.get("form_id") != registro_id:
+        
         if not df_previo.empty:
-            # Si ya existe en DB, cargarlo
+            # CASO A: YA EXISTE -> CARGAR DATOS DE LA BASE DE DATOS
+            # Convertimos la fila de la BD a un diccionario
             data_dict = df_previo.iloc[0].to_dict()
-            # Filtramos solo las columnas del formulario
+            
+            # Filtramos solo las columnas que usa el editor (para evitar errores con IDs o fechas)
             filtered_data = {k: data_dict[k] for k in columnas if k in data_dict}
+            
+            # Creamos el DataFrame con los datos recuperados
             st.session_state.form_bs = pd.DataFrame([filtered_data])
+            # st.toast("Datos previos cargados exitosamente") # Opcional: aviso visual
+            
         else:
-            # Si es nuevo, lógica por defecto
+            # CASO B: ES NUEVO -> APLICAR LÓGICA AUTOMÁTICA POR RNC
             base = {col: "N/A" for col in columnas}
+            
             if rnc.startswith("1"):
                 base.update({"OFI":"√","FACT":"√","RPE":"√","DGII":"√","TSS":"√"})
             elif rnc.startswith("4"):
                 base.update({"OFI":"√","FACT":"√"})
+            
             st.session_state.form_bs = pd.DataFrame([base])
         
+        # Actualizamos el rastreador para saber que ya cargamos este ID
         st.session_state.form_id = registro_id
 
-    # Botones automáticos
-    if rnc.startswith("1") or rnc.startswith("4"):
-        if st.button("✔ Marcar CC y CP"):
-            st.session_state.form_bs.loc[0, ["CC","CP"]] = "√"
-    if rnc.startswith("4"):
-        if st.button("✔ Marcar DGII, TSS y RPE"):
-            st.session_state.form_bs.loc[0, ["DGII","TSS","RPE"]] = "√"
+    # 4. Botones de ayuda rápida (Siguen funcionando para correcciones masivas)
+    col_btn1, col_btn2 = st.columns(2)
+    with col_btn1:
+        if rnc.startswith("1") or rnc.startswith("4"):
+            if st.button("✔ Resetear a CC y CP"):
+                st.session_state.form_bs.loc[0, ["CC","CP"]] = "√"
+    with col_btn2:
+        if rnc.startswith("4"):
+            if st.button("✔ Resetear DGII/TSS/RPE"):
+                st.session_state.form_bs.loc[0, ["DGII","TSS","RPE"]] = "√"
 
-    # Editor
+    # 5. El Editor
     config = {col: st.column_config.SelectboxColumn(options=["√","N/A"], width=70) for col in columnas}
-    df_editado = st.data_editor(st.session_state.form_bs, column_config=config, hide_index=True, key="editor_bs")
+    
+    df_editado = st.data_editor(
+        st.session_state.form_bs, 
+        column_config=config, 
+        hide_index=True, 
+        key="editor_bs"
+    )
 
+    # 6. Guardado (UPSERT - Actualiza si existe, Inserta si no)
     if st.button("💾 Guardar Formulario"):
         datos = df_editado.iloc[0].to_dict()
         
-        # Upsert (Insertar o Actualizar) para Postgres
         upsert_sql = """
             INSERT INTO formulario_bienes_servicios (
                 registro_id, CC, CP, OFI, FACT, FIRMA_DIGITAL, Recep, RPE, DGII, TSS, 
@@ -402,20 +422,13 @@ def crear_formulario_bienes_servicios(registro_id):
         params_form = datos.copy()
         params_form["rid"] = int(registro_id)
         
-        run_query(upsert_sql, params_form)
-
-        # Actualizar estado a completado
-        run_query("UPDATE registros SET estado='Completado' WHERE id = :id", params={"id": int(registro_id)})
-        
-        st.success("Formulario guardado correctamente")
-        time.sleep(1)
-        st.rerun()
-
-# Mostrar formulario si aplica
-if registro_sel:
-    clasif = df_historial.loc[df_historial.id==registro_sel,"clasificacion"].values[0]
-    if clasif == "SERVICIOS BASICOS":
-        crear_formulario_bienes_servicios(registro_sel)
+        if run_query(upsert_sql, params_form):
+            # Marcar registro principal como completado
+            run_query("UPDATE registros SET estado='Completado' WHERE id = :id", params={"id": int(registro_id)})
+            
+            st.success("Cambios guardados correctamente")
+            time.sleep(1)
+            st.rerun()
 
 # ================= EXPORTACIÓN Y CIERRE DE LOTE =================
 st.markdown("---")
@@ -463,3 +476,4 @@ if not df_export.empty:
     )
 else:
     st.write("No hay expedientes pendientes para exportar.")
+
