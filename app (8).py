@@ -468,5 +468,3 @@ if st.button("📥 Exportar TODOS los expedientes a Excel"):
         file_name="Auditoria_Completa.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
-"
-
