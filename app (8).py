@@ -88,7 +88,7 @@ def extraer_datos(texto):
     importe_final = "No encontrado"
     
     # Por defecto es General
-    clasificacion = "General"
+    clasificacion = "SERVICIOS BASICOS"
 
     # 1. Buscamos el RNC
     rnc_match = re.search(r'\b\d{9,11}\b', texto)
@@ -472,4 +472,5 @@ if not df_export.empty:
     )
 else:
     st.write("No hay expedientes pendientes para exportar.")
+
 
